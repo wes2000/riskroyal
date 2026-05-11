@@ -1685,7 +1685,7 @@ host got answer { type: 'signal', from: 2, payload: { sdp: 'ANSWER' } }
 joiner closed after connected
 ```
 
-Server logs (in the first terminal) should show: `host_issued`, `join_accepted`, two `signal_relayed`, one `connected`, one `joiner_disconnect`.
+Server logs (in the first terminal) should show: `listening`, `host_issued`, `join_accepted`, two `signal_relayed`, one `connected` (debug), and `host_disconnect` when the host closes. Note: no `joiner_disconnect` fires on a graceful `connected` flow — Task 12 places that log only inside the `pendingJoiners.delete()` truthy branch, which is false after Task 8's `connected` handler already removed the joiner.
 
 - [ ] **Step 3: Kill the server (Ctrl-C); verify clean shutdown logs**
 
