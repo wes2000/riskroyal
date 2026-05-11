@@ -29,6 +29,7 @@ func _connect_signals() -> void:
 	_transport.peer_joined.connect(_on_peer_joined)
 	_transport.peer_left.connect(_on_peer_left)
 	_signaling.host_left.connect(_on_host_left)
+	_signaling.peer_arriving.connect(_on_peer_arriving)
 
 func host_session() -> void:
 	is_host = true
@@ -160,6 +161,28 @@ func _on_host_left() -> void:
 		return
 	pre_pause_state = state
 	_set_state(NetSessionState.State.PAUSED)
+
+func _on_peer_arriving(joiner_id: int, reconnect_token: String) -> void:
+	if not is_host:
+		return
+	if reconnect_token != "":
+		var slot = _find_disconnected_by_token(reconnect_token)
+		if slot != null:
+			slot.peer_id = joiner_id
+			slot.connected = true
+			slot.reconnect_token = _generate_token()
+			if state == NetSessionState.State.PAUSED:
+				_set_state(pre_pause_state)
+			players_changed.emit()
+			return
+	# Not a recognized reconnect -> normal new-join SDP path
+	_transport.add_peer(joiner_id)
+
+func _find_disconnected_by_token(token: String):
+	for s in players:
+		if not s.connected and s.reconnect_token == token:
+			return s
+	return null
 
 func _find_slot(peer_id: int):
 	for s in players:
