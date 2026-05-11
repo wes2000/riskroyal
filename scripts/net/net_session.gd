@@ -13,6 +13,7 @@ signal match_starting(match_start)
 var _transport
 var _signaling
 var state: int = NetSessionState.State.IDLE
+var pre_pause_state: int = NetSessionState.State.IDLE
 var is_host: bool = false
 var local_peer_id: int = 0
 var code: String = ""
@@ -26,6 +27,8 @@ func _init(transport, signaling_client):
 func _connect_signals() -> void:
 	_signaling.code_issued.connect(_on_code_issued)
 	_transport.peer_joined.connect(_on_peer_joined)
+	_transport.peer_left.connect(_on_peer_left)
+	_signaling.host_left.connect(_on_host_left)
 
 func host_session() -> void:
 	is_host = true
@@ -142,6 +145,21 @@ func start_match() -> bool:
 	_set_state(NetSessionState.State.MATCH)
 	match_starting.emit(ms)
 	return true
+
+func _on_peer_left(peer_id: int) -> void:
+	var slot = _find_slot(peer_id)
+	if slot != null:
+		slot.connected = false
+	if state != NetSessionState.State.PAUSED:
+		pre_pause_state = state
+		_set_state(NetSessionState.State.PAUSED)
+	players_changed.emit()
+
+func _on_host_left() -> void:
+	if state == NetSessionState.State.IDLE:
+		return
+	pre_pause_state = state
+	_set_state(NetSessionState.State.PAUSED)
 
 func _find_slot(peer_id: int):
 	for s in players:
