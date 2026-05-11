@@ -67,5 +67,79 @@ test('second host message from same socket returns error', async () => {
   ws.close();
 });
 
+async function hostAndGetCode() {
+  const host = await connect();
+  await send(host, { type: 'host' });
+  const { code } = await recv(host);
+  return { host, code };
+}
+
+test('join with unknown code returns error', async () => {
+  const joiner = await connect();
+  await send(joiner, { type: 'join', code: 'ZZZZZZ' });
+  const reply = await recv(joiner);
+  assert.equal(reply.type, 'error');
+  assert.equal(reply.reason, 'unknown_code');
+  joiner.close();
+});
+
+test('join with lowercase code works (case-insensitive)', async () => {
+  const { host, code } = await hostAndGetCode();
+  const joiner = await connect();
+  await send(joiner, { type: 'join', code: code.toLowerCase() });
+  const hostMsg = await recv(host);
+  assert.equal(hostMsg.type, 'joiner');
+  assert.equal(hostMsg.joinerId, 2);
+  host.close(); joiner.close();
+});
+
+test('happy join: host receives joiner with monotonic id', async () => {
+  const { host, code } = await hostAndGetCode();
+  const j1 = await connect();
+  await send(j1, { type: 'join', code });
+  const m1 = await recv(host);
+  assert.equal(m1.type, 'joiner');
+  assert.equal(m1.joinerId, 2);
+
+  const j2 = await connect();
+  await send(j2, { type: 'join', code });
+  const m2 = await recv(host);
+  assert.equal(m2.joinerId, 3);
+  host.close(); j1.close(); j2.close();
+});
+
+test('full session (8 already) rejects further joiners', async () => {
+  const { host, code } = await hostAndGetCode();
+  // Force-fill: bump nextJoinerId to 9
+  env.store.getByCode(code).nextJoinerId = 9;
+  const joiner = await connect();
+  await send(joiner, { type: 'join', code });
+  const reply = await recv(joiner);
+  assert.equal(reply.type, 'error');
+  assert.equal(reply.reason, 'full');
+  host.close(); joiner.close();
+});
+
+test('started session rejects further joiners', async () => {
+  const { host, code } = await hostAndGetCode();
+  env.store.getByCode(code).started = true;
+  const joiner = await connect();
+  await send(joiner, { type: 'join', code });
+  const reply = await recv(joiner);
+  assert.equal(reply.type, 'error');
+  assert.equal(reply.reason, 'in_progress');
+  host.close(); joiner.close();
+});
+
+test('join forwards reconnect_token to host when present', async () => {
+  const { host, code } = await hostAndGetCode();
+  const joiner = await connect();
+  await send(joiner, { type: 'join', code, reconnect_token: 'abc123' });
+  const m = await recv(host);
+  assert.equal(m.type, 'joiner');
+  assert.equal(m.reconnect_token, 'abc123');
+  host.close(); joiner.close();
+});
+
 // Exports for later tasks to use:
 module.exports = { connect, send, recv };

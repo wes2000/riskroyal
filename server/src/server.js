@@ -41,6 +41,28 @@ function start(port, opts = {}) {
           ws._code = code;
           return sendJson(ws, { type: 'code', code });
         }
+        case 'join': {
+          if (ws._role) return sendError(ws, 'already_joined');
+          const code = normalizeCode(msg.code);
+          if (!code) return sendError(ws, 'unknown_code');
+          const session = store.getByCode(code);
+          if (!session) return sendError(ws, 'unknown_code');
+          if (session.started) return sendError(ws, 'in_progress');
+          if (session.nextJoinerId > 8) return sendError(ws, 'full');
+
+          const joinerId = session.nextJoinerId++;
+          ws._role = 'joiner';
+          ws._peerId = joinerId;
+          ws._code = code;
+          session.pendingJoiners.set(joinerId, ws);
+          store.touch(session);
+
+          const forward = { type: 'joiner', joinerId };
+          if (typeof msg.reconnect_token === 'string') {
+            forward.reconnect_token = msg.reconnect_token;
+          }
+          return sendJson(session.hostWs, forward);
+        }
         default:
           return sendError(ws, 'unknown_type');
       }
