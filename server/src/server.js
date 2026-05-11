@@ -26,7 +26,21 @@ function start(port, opts = {}) {
       catch { return sendError(ws, 'bad_json'); }
 
       switch (msg.type) {
-        // Filled in by Tasks 5–8.
+        case 'host': {
+          if (ws._role) return sendError(ws, 'already_host');
+          // try a few times in case of (extremely unlikely) collision
+          let code = null;
+          for (let i = 0; i < 5 && !code; i++) {
+            const candidate = generateCode();
+            if (!store.getByCode(candidate)) code = candidate;
+          }
+          if (!code) return sendError(ws, 'server_busy');
+          store.create(code, ws);
+          ws._role = 'host';
+          ws._peerId = 1;
+          ws._code = code;
+          return sendJson(ws, { type: 'code', code });
+        }
         default:
           return sendError(ws, 'unknown_type');
       }

@@ -46,5 +46,26 @@ test('malformed JSON returns error', async () => {
   ws.close();
 });
 
+test('host message returns a code and registers the session', async () => {
+  const ws = await connect();
+  await send(ws, { type: 'host' });
+  const reply = await recv(ws);
+  assert.equal(reply.type, 'code');
+  assert.equal(typeof reply.code, 'string');
+  assert.equal(reply.code.length, 6);
+  assert.equal(env.store.getByCode(reply.code).hostWs.readyState, 1);
+  ws.close();
+});
+
+test('second host message from same socket returns error', async () => {
+  const ws = await connect();
+  await send(ws, { type: 'host' }); await recv(ws);
+  await send(ws, { type: 'host' });
+  const reply = await recv(ws);
+  assert.equal(reply.type, 'error');
+  assert.equal(reply.reason, 'already_host');
+  ws.close();
+});
+
 // Exports for later tasks to use:
 module.exports = { connect, send, recv };
