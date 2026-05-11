@@ -4,6 +4,7 @@ extends RefCounted
 
 signal code_issued(code: String)
 signal peer_arriving(joiner_id: int, reconnect_token: String)
+signal peer_id_assigned(peer_id: int)
 signal match_started_ack()
 signal host_left()
 signal joiner_left(joiner_id: int)
@@ -41,6 +42,9 @@ func emit_code_issued(code: String) -> void:
 
 func emit_peer_arriving(joiner_id: int, reconnect_token: String = "") -> void:
 	peer_arriving.emit(joiner_id, reconnect_token)
+
+func emit_peer_id_assigned(peer_id: int) -> void:
+	peer_id_assigned.emit(peer_id)
 
 func emit_match_started_ack() -> void:
 	match_started_ack.emit()

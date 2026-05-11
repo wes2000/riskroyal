@@ -4,6 +4,7 @@
 # Signals:
 #   code_issued(code: String)
 #   peer_arriving(joiner_id: int, reconnect_token: String)
+#   peer_id_assigned(peer_id: int)
 #   match_started_ack()
 #   host_left()
 #   joiner_left(joiner_id: int)

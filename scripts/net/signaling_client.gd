@@ -70,5 +70,14 @@ func pump() -> void:
 			continue
 		_dispatch_inbound(parsed)
 
-func _dispatch_inbound(_msg: Dictionary) -> void:
-	pass  # Filled in by Tasks 4-6.
+func _dispatch_inbound(msg: Dictionary) -> void:
+	match msg.get("type", ""):
+		"code":
+			code_issued.emit(msg.get("code", ""))
+		"joined":
+			peer_id_assigned.emit(int(msg.get("peerId", 0)))
+		"joiner":
+			var tok: String = msg.get("reconnect_token", "")
+			peer_arriving.emit(int(msg.get("joinerId", 0)), tok)
+		_:
+			pass  # Other types in Tasks 5-6.

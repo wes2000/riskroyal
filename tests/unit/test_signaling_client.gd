@@ -80,3 +80,35 @@ func test_close_calls_underlying_close():
 	client.request_code()
 	client.close()
 	assert_eq(ws.close_calls, 1)
+
+func test_inbound_code_emits_code_issued():
+	client.request_code()
+	var received := []
+	client.code_issued.connect(func(c): received.append(c))
+	ws.emit_packet({"type": "code", "code": "QX7K2P"})
+	client.pump()
+	assert_eq(received, ["QX7K2P"])
+
+func test_inbound_joined_emits_peer_id_assigned():
+	client.connect_to_code("ABC234")
+	var received := []
+	client.peer_id_assigned.connect(func(id): received.append(id))
+	ws.emit_packet({"type": "joined", "peerId": 2})
+	client.pump()
+	assert_eq(received, [2])
+
+func test_inbound_joiner_without_token_emits_peer_arriving_with_empty_token():
+	client.request_code()
+	var received := []
+	client.peer_arriving.connect(func(jid, tok): received.append([jid, tok]))
+	ws.emit_packet({"type": "joiner", "joinerId": 2})
+	client.pump()
+	assert_eq(received, [[2, ""]])
+
+func test_inbound_joiner_with_token_emits_peer_arriving_with_token():
+	client.request_code()
+	var received := []
+	client.peer_arriving.connect(func(jid, tok): received.append([jid, tok]))
+	ws.emit_packet({"type": "joiner", "joinerId": 3, "reconnect_token": "abc"})
+	client.pump()
+	assert_eq(received, [[3, "abc"]])
