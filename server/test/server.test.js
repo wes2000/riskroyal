@@ -187,5 +187,30 @@ test('signal from non-session socket returns error', async () => {
   stranger.close();
 });
 
+test('connected from joiner releases pendingJoiners and closes joiner ws', async () => {
+  const { host, joiner, code } = await fullHandshakeSetup();
+  const session = env.store.getByCode(code);
+  assert.equal(session.pendingJoiners.size, 1);
+
+  await send(joiner, { type: 'connected' });
+  // wait for the server to close our socket — guarantees handler ran
+  await new Promise((r) => joiner.once('close', r));
+  assert.equal(session.pendingJoiners.size, 0);
+  assert.equal(joiner.readyState, joiner.CLOSED);
+  host.close();
+});
+
+test('connected from host (with peerId) releases that joiner', async () => {
+  const { host, joiner, code } = await fullHandshakeSetup();
+  const session = env.store.getByCode(code);
+  await send(host, { type: 'connected', peerId: 2 });
+  // wait for the joiner socket to close — proves the server processed the message
+  await new Promise((r) => joiner.once('close', r));
+  assert.equal(session.pendingJoiners.size, 0);
+  // host stays open (still hosting)
+  assert.equal(host.readyState, host.OPEN);
+  host.close(); joiner.close();
+});
+
 // Exports for later tasks to use:
 module.exports = { connect, send, recv };

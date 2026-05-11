@@ -79,6 +79,23 @@ function start(port, opts = {}) {
             payload: msg.payload,
           });
         }
+        case 'connected': {
+          if (!ws._code) return; // silently ignore
+          const session = store.getByCode(ws._code);
+          if (!session) return;
+
+          if (ws._role === 'joiner') {
+            session.pendingJoiners.delete(ws._peerId);
+            ws.close();
+          } else if (ws._role === 'host') {
+            const target = session.pendingJoiners.get(msg.peerId);
+            if (target) {
+              session.pendingJoiners.delete(msg.peerId);
+              target.close();
+            }
+          }
+          return;
+        }
         default:
           return sendError(ws, 'unknown_type');
       }
