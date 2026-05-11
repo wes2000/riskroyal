@@ -85,6 +85,15 @@ func test_peer_join_caps_at_max_players():
 	assert_eq(session.players.size(), 8)
 	assert_eq(emitted[0], 0, "rejected join must not fire players_changed")
 
+func test_reconnect_tokens_are_distinct():
+	transport.emit_peer_joined(2)
+	transport.emit_peer_joined(3)
+	var t2 = _find_slot(2).reconnect_token
+	var t3 = _find_slot(3).reconnect_token
+	assert_ne(t2, "", "token 2 non-empty")
+	assert_ne(t3, "", "token 3 non-empty")
+	assert_ne(t2, t3, "_generate_token must produce distinct values per peer")
+
 func test_receive_player_info_rejects_outside_lobby_state():
 	transport.emit_peer_joined(2)
 	session.receive_player_info(2, "Maya", 3)

@@ -10,6 +10,10 @@ signal state_changed(new_state: int)
 signal session_ended(reason: String)
 signal match_starting(match_start)
 
+# _transport must honor res://scripts/net/transport_interface.gd signal contract.
+# _signaling must honor res://scripts/net/signaling_client_interface.gd signal contract.
+# In Plan B, FakeTransport/FakeSignalingClient are passed in by tests.
+# In Plan C, real WebRTCTransport/SignalingClient will be wired by the autoload bootstrap.
 var _transport
 var _signaling
 var state: int = NetSessionState.State.IDLE
@@ -33,7 +37,7 @@ func _connect_signals() -> void:
 
 func host_session() -> void:
 	is_host = true
-	local_peer_id = 1
+	local_peer_id = NetConfig.HOST_PEER_ID
 	_transport.start_host()
 	_signaling.request_code()
 
@@ -57,7 +61,7 @@ func leave_session() -> void:
 func _on_code_issued(new_code: String) -> void:
 	code = new_code
 	var host_slot = PlayerSlot.new()
-	host_slot.peer_id = 1
+	host_slot.peer_id = NetConfig.HOST_PEER_ID
 	host_slot.is_host = true
 	host_slot.seat_index = 0
 	players = [host_slot]
@@ -144,7 +148,7 @@ func start_match() -> bool:
 
 	var ms = MatchStart.new()
 	ms.seats = players.duplicate()
-	ms.host_peer_id = 1
+	ms.host_peer_id = NetConfig.HOST_PEER_ID
 	ms.rng_seed = randi() | (randi() << 32)
 	ms.mode = "quick_clash"
 	ms.rules = {}

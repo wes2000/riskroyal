@@ -60,13 +60,19 @@ func test_kick_rejects_when_not_host():
 	var ok = joiner_session.kick(2)
 	assert_false(ok)
 
-func test_kick_calls_transport_disconnect():
+func test_kick_removes_slot():
 	# In Plan C, kick will trigger transport.disconnect_peer(peer_id).
 	# FakeTransport tracks any such call.
 	session.kick(2)
 	# For Plan B we just verify the slot is removed and player_changed emits;
 	# the transport disconnect side-effect is wired up in Plan C.
 	assert_null(_slot(2))
+
+func test_kick_rejects_unknown_peer():
+	var before = session.players.size()
+	var ok = session.kick(99)
+	assert_false(ok)
+	assert_eq(session.players.size(), before, "players unchanged on unknown-peer kick")
 
 func test_actions_emit_players_changed():
 	# Array (reference type) used because GDScript lambdas do not propagate
