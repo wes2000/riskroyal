@@ -90,5 +90,7 @@ func _dispatch_inbound(msg: Dictionary) -> void:
 			host_left.emit()
 		"joiner_left":
 			joiner_left.emit(int(msg.get("joinerId", 0)))
+		"error":
+			signaling_error.emit(msg.get("reason", "unknown"))
 		_:
-			pass  # Other types in Task 6.
+			pass  # Unknown types ignored for forward compatibility.

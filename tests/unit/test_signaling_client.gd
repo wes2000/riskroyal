@@ -144,3 +144,28 @@ func test_inbound_joiner_left_emits_with_id():
 	ws.emit_packet({"type": "joiner_left", "joinerId": 4})
 	client.pump()
 	assert_eq(received, [4])
+
+func test_inbound_error_emits_signaling_error():
+	client.request_code()
+	var received := []
+	client.signaling_error.connect(func(reason): received.append(reason))
+	ws.emit_packet({"type": "error", "reason": "unknown_code"})
+	client.pump()
+	assert_eq(received, ["unknown_code"])
+
+func test_inbound_unknown_type_is_ignored():
+	client.request_code()
+	var fired = [false]
+	client.code_issued.connect(func(_c): fired[0] = true)
+	ws.emit_packet({"type": "banana"})
+	client.pump()
+	assert_false(fired[0])
+
+func test_pump_drains_multiple_packets_in_one_call():
+	client.request_code()
+	var codes := []
+	client.code_issued.connect(func(c): codes.append(c))
+	ws.emit_packet({"type": "code", "code": "AAA111"})
+	ws.emit_packet({"type": "code", "code": "BBB222"})
+	client.pump()
+	assert_eq(codes, ["AAA111", "BBB222"])
