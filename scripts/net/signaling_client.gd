@@ -79,5 +79,16 @@ func _dispatch_inbound(msg: Dictionary) -> void:
 		"joiner":
 			var tok: String = msg.get("reconnect_token", "")
 			peer_arriving.emit(int(msg.get("joinerId", 0)), tok)
+		"signal":
+			var payload = msg.get("payload", {})
+			if typeof(payload) != TYPE_DICTIONARY:
+				payload = {}
+			signal_received.emit(int(msg.get("from", 0)), payload)
+		"match_started":
+			match_started_ack.emit()
+		"host_left":
+			host_left.emit()
+		"joiner_left":
+			joiner_left.emit(int(msg.get("joinerId", 0)))
 		_:
-			pass  # Other types in Tasks 5-6.
+			pass  # Other types in Task 6.

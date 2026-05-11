@@ -112,3 +112,35 @@ func test_inbound_joiner_with_token_emits_peer_arriving_with_token():
 	ws.emit_packet({"type": "joiner", "joinerId": 3, "reconnect_token": "abc"})
 	client.pump()
 	assert_eq(received, [[3, "abc"]])
+
+func test_inbound_signal_emits_signal_received():
+	client.request_code()
+	var received := []
+	client.signal_received.connect(func(from_peer, payload): received.append([from_peer, payload]))
+	ws.emit_packet({"type": "signal", "from": 2, "payload": {"sdp": "OFFER"}})
+	client.pump()
+	assert_eq(received, [[2, {"sdp": "OFFER"}]])
+
+func test_inbound_match_started_emits_ack():
+	client.request_code()
+	var ack_count = [0]
+	client.match_started_ack.connect(func(): ack_count[0] += 1)
+	ws.emit_packet({"type": "match_started"})
+	client.pump()
+	assert_eq(ack_count[0], 1)
+
+func test_inbound_host_left_emits_signal():
+	client.connect_to_code("ABC234")
+	var fired = [false]
+	client.host_left.connect(func(): fired[0] = true)
+	ws.emit_packet({"type": "host_left"})
+	client.pump()
+	assert_true(fired[0])
+
+func test_inbound_joiner_left_emits_with_id():
+	client.request_code()
+	var received := []
+	client.joiner_left.connect(func(jid): received.append(jid))
+	ws.emit_packet({"type": "joiner_left", "joinerId": 4})
+	client.pump()
+	assert_eq(received, [4])
