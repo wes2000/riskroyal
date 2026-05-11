@@ -118,7 +118,7 @@ node_modules/
   },
   "scripts": {
     "start": "node index.js",
-    "test": "node --test test/"
+    "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
     "ws": "^8.18.0"
