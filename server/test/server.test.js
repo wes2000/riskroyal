@@ -304,5 +304,17 @@ test('host disconnect propagates host_left to pending joiners', async () => {
   await new Promise((r) => joiner.once('close', r));
 });
 
+test('oversized signal payload (>64KB) closes the WebSocket', async () => {
+  const { host, joiner } = await fullHandshakeSetup();
+  // Build a payload >64KB. ws lib will reject the frame at the wire level.
+  const huge = 'x'.repeat(70000);
+  await new Promise((resolve) => {
+    joiner.once('close', resolve);
+    joiner.send(JSON.stringify({ type: 'signal', to: 1, payload: { junk: huge } }));
+  });
+  assert.equal(joiner.readyState, joiner.CLOSED);
+  host.close();
+});
+
 // Exports for later tasks to use:
 module.exports = { connect, send, recv };

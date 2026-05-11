@@ -13,7 +13,7 @@ function sendError(ws, reason) {
 
 function start(port, opts = {}) {
   const store = opts.store || createSessionStore({});
-  const wss = new WebSocketServer({ port });
+  const wss = new WebSocketServer({ port, maxPayload: 64 * 1024 });
   wss._store = store;
   const pruneInterval = setInterval(() => store.pruneExpired(), 60000);
   wss.on('close', () => clearInterval(pruneInterval));
@@ -22,6 +22,13 @@ function start(port, opts = {}) {
     ws._role = null;       // 'host' | 'joiner'
     ws._peerId = null;
     ws._code = null;
+
+    // Swallow socket-level errors (e.g. oversized payload triggers a
+    // RangeError that ws emits as 'error' before closing the connection).
+    // The 'close' handler below still runs and does the real cleanup.
+    ws.on('error', (err) => {
+      log.warn('socket_error', { message: err && err.message });
+    });
 
     ws.on('message', (data) => {
       let msg;
