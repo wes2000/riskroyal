@@ -125,6 +125,14 @@ function start(port, opts = {}) {
           }
           return;
         }
+        case 'start_match': {
+          if (ws._role !== 'host') return sendError(ws, 'not_host');
+          const session = store.getByCode(ws._code);
+          if (!session) return sendError(ws, 'no_session');
+          session.started = true;
+          log.info('match_started', { code: session.code });
+          return sendJson(ws, { type: 'match_started' });
+        }
         default:
           return sendError(ws, 'unknown_type');
       }

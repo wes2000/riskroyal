@@ -315,5 +315,35 @@ test('oversized signal payload (>64KB) closes the WebSocket', async () => {
   host.close();
 });
 
+test('start_match from host marks session started and ack is sent', async () => {
+  const { host, code } = await hostAndGetCode();
+  await send(host, { type: 'start_match' });
+  const ack = await recv(host);
+  assert.equal(ack.type, 'match_started');
+  assert.equal(env.store.getByCode(code).started, true);
+  host.close();
+});
+
+test('start_match from joiner returns error', async () => {
+  const { host, joiner } = await fullHandshakeSetup();
+  await send(joiner, { type: 'start_match' });
+  const reply = await recv(joiner);
+  assert.equal(reply.type, 'error');
+  assert.equal(reply.reason, 'not_host');
+  host.close(); joiner.close();
+});
+
+test('join after start_match returns in_progress', async () => {
+  const { host, code } = await hostAndGetCode();
+  await send(host, { type: 'start_match' });
+  await recv(host); // discard match_started
+  const joiner = await connect();
+  await send(joiner, { type: 'join', code });
+  const reply = await recv(joiner);
+  assert.equal(reply.type, 'error');
+  assert.equal(reply.reason, 'in_progress');
+  host.close(); joiner.close();
+});
+
 // Exports for later tasks to use:
 module.exports = { connect, send, recv };
