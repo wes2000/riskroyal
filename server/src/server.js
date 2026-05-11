@@ -83,6 +83,10 @@ function start(port, opts = {}) {
           session.pendingJoiners.set(joinerId, ws);
           store.touch(session);
 
+          // Tell the joiner what peer_id the server assigned (Plan C: WebRTC create_client needs this).
+          sendJson(ws, { type: 'joined', peerId: joinerId });
+          log.debug('joined_ack', { code: session.code, joinerId });
+
           const forward = { type: 'joiner', joinerId };
           if (typeof msg.reconnect_token === 'string') {
             forward.reconnect_token = msg.reconnect_token;

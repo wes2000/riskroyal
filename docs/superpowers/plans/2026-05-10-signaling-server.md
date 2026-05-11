@@ -60,6 +60,7 @@ The spec's §6.1 protocol table lists the message types Godot clients send and t
 |---|---|---|
 | `joiner_left` (type) | Server → host | A pending joiner's WebSocket closes mid-handshake before completing the WebRTC connection. |
 | `host_left` (type) | Server → pending joiner | Host's WebSocket closed while joiner was still in handshake. Symmetric with `joiner_left`. |
+| `joined` (type) | Server → joiner | Server's reply to a successful `join` carrying the assigned `peerId`. Sent before the `joiner` forward to the host so the joiner can call `WebRTCMultiplayerPeer.create_client(peerId)` (Godot requires peer_id ≥ 2 at create-time). |
 | `start_match` (type) | Client (host) → server | Host signals lobby is closed. Server sets `session.started = true`. Replies with `match_started`. |
 | `match_started` (type) | Server → host | Ack for `start_match`. |
 | `error: not_host` | Server → client | Sent if a non-host socket sends `start_match`. |

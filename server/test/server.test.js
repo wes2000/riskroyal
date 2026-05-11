@@ -345,5 +345,23 @@ test('join after start_match returns in_progress', async () => {
   host.close(); joiner.close();
 });
 
+test('joiner receives {type:"joined", peerId} immediately on accept', async () => {
+  const { host, code } = await hostAndGetCode();
+  const joiner = await connect();
+  await send(joiner, { type: 'join', code });
+
+  // Joiner first message should be 'joined' with the assigned peerId.
+  const joinerMsg = await recv(joiner);
+  assert.equal(joinerMsg.type, 'joined');
+  assert.equal(joinerMsg.peerId, 2);
+
+  // Host still receives the existing 'joiner' forward.
+  const hostMsg = await recv(host);
+  assert.equal(hostMsg.type, 'joiner');
+  assert.equal(hostMsg.joinerId, 2);
+
+  host.close(); joiner.close();
+});
+
 // Exports for later tasks to use:
 module.exports = { connect, send, recv };
