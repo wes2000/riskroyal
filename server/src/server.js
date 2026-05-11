@@ -104,7 +104,22 @@ function start(port, opts = {}) {
     });
 
     ws.on('close', () => {
-      // Filled in by Task 10.
+      if (!ws._code) return;
+      const session = store.getByCode(ws._code);
+      if (!session) return;
+
+      if (ws._role === 'host') {
+        // Notify any pending joiners (they're mid-handshake; tell them it's over)
+        for (const [, jWs] of session.pendingJoiners) {
+          sendError(jWs, 'host_left');
+          jWs.close();
+        }
+        store.remove(session.code);
+      } else if (ws._role === 'joiner') {
+        if (session.pendingJoiners.delete(ws._peerId)) {
+          sendJson(session.hostWs, { type: 'joiner_left', joinerId: ws._peerId });
+        }
+      }
     });
   });
 

@@ -274,5 +274,35 @@ test('messages from a socket whose session was pruned return no_session', async 
   await customEnv.close();
 });
 
+test('host disconnect frees the code immediately', async () => {
+  const { host, code } = await hostAndGetCode();
+  assert.ok(env.store.getByCode(code));
+  host.close();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(env.store.getByCode(code), null);
+});
+
+test('joiner disconnect mid-handshake notifies host and removes pending', async () => {
+  const { host, joiner, code } = await fullHandshakeSetup();
+  const session = env.store.getByCode(code);
+  assert.equal(session.pendingJoiners.size, 1);
+
+  joiner.close();
+  const m = await recv(host);
+  assert.equal(m.type, 'joiner_left');
+  assert.equal(m.joinerId, 2);
+  assert.equal(session.pendingJoiners.size, 0);
+  host.close();
+});
+
+test('host disconnect propagates host_left to pending joiners', async () => {
+  const { host, joiner } = await fullHandshakeSetup();
+  host.close();
+  const m = await recv(joiner);
+  assert.equal(m.type, 'error');
+  assert.equal(m.reason, 'host_left');
+  await new Promise((r) => joiner.once('close', r));
+});
+
 // Exports for later tasks to use:
 module.exports = { connect, send, recv };
