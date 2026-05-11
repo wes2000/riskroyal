@@ -139,7 +139,7 @@ function start(port, opts = {}) {
         log.info('host_disconnect', { code: ws._code });
         // Notify any pending joiners (they're mid-handshake; tell them it's over)
         for (const [, jWs] of session.pendingJoiners) {
-          sendError(jWs, 'host_left');
+          sendJson(jWs, { type: 'host_left' });
           jWs.close();
         }
         store.remove(session.code);

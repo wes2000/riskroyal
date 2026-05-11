@@ -299,8 +299,7 @@ test('host disconnect propagates host_left to pending joiners', async () => {
   const { host, joiner } = await fullHandshakeSetup();
   host.close();
   const m = await recv(joiner);
-  assert.equal(m.type, 'error');
-  assert.equal(m.reason, 'host_left');
+  assert.equal(m.type, 'host_left');
   await new Promise((r) => joiner.once('close', r));
 });
 

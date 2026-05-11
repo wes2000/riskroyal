@@ -59,7 +59,7 @@ The spec's §6.1 protocol table lists the message types Godot clients send and t
 | Symbol | Direction | When |
 |---|---|---|
 | `joiner_left` (type) | Server → host | A pending joiner's WebSocket closes mid-handshake before completing the WebRTC connection. |
-| `error: host_left` | Server → pending joiner | Host's WebSocket closed while joiner was still in handshake. |
+| `host_left` (type) | Server → pending joiner | Host's WebSocket closed while joiner was still in handshake. Symmetric with `joiner_left`. |
 | `error: already_host` | Server → client | Client already sent `host` on this socket; rejecting a second `host`. |
 | `error: already_joined` | Server → client | Client already sent `join` on this socket; rejecting a second `join`. |
 | `error: no_session` | Server → client | `signal` arrived on a socket that has no associated session (e.g., never sent `host`/`join`, or session was pruned). `connected` is a teardown hint and is silently ignored in this case, not errored. |
