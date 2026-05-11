@@ -1,6 +1,7 @@
 const { WebSocketServer } = require('ws');
 const { createSessionStore } = require('./session-store');
 const { generateCode, normalizeCode } = require('./code-generator');
+const log = require('./logger');
 
 function sendJson(ws, obj) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
@@ -41,16 +42,32 @@ function start(port, opts = {}) {
           ws._role = 'host';
           ws._peerId = 1;
           ws._code = code;
+          log.info('host_issued', { code });
           return sendJson(ws, { type: 'code', code });
         }
         case 'join': {
-          if (ws._role) return sendError(ws, 'already_joined');
+          if (ws._role) {
+            log.warn('join_rejected', { code: msg.code, reason: 'already_joined' });
+            return sendError(ws, 'already_joined');
+          }
           const code = normalizeCode(msg.code);
-          if (!code) return sendError(ws, 'unknown_code');
+          if (!code) {
+            log.warn('join_rejected', { code: msg.code, reason: 'unknown_code' });
+            return sendError(ws, 'unknown_code');
+          }
           const session = store.getByCode(code);
-          if (!session) return sendError(ws, 'unknown_code');
-          if (session.started) return sendError(ws, 'in_progress');
-          if (session.nextJoinerId > 8) return sendError(ws, 'full');
+          if (!session) {
+            log.warn('join_rejected', { code: msg.code, reason: 'unknown_code' });
+            return sendError(ws, 'unknown_code');
+          }
+          if (session.started) {
+            log.warn('join_rejected', { code: msg.code, reason: 'in_progress' });
+            return sendError(ws, 'in_progress');
+          }
+          if (session.nextJoinerId > 8) {
+            log.warn('join_rejected', { code: msg.code, reason: 'full' });
+            return sendError(ws, 'full');
+          }
 
           const joinerId = session.nextJoinerId++;
           ws._role = 'joiner';
@@ -63,6 +80,7 @@ function start(port, opts = {}) {
           if (typeof msg.reconnect_token === 'string') {
             forward.reconnect_token = msg.reconnect_token;
           }
+          log.info('join_accepted', { code, joinerId, reconnect: !!msg.reconnect_token });
           return sendJson(session.hostWs, forward);
         }
         case 'signal': {
@@ -75,6 +93,7 @@ function start(port, opts = {}) {
           else target = session.pendingJoiners.get(to);
           if (!target) return sendError(ws, 'unknown_peer');
           store.touch(session);
+          log.debug('signal_relayed', { from: ws._peerId, to: msg.to });
           return sendJson(target, {
             type: 'signal',
             from: ws._peerId,
@@ -86,6 +105,7 @@ function start(port, opts = {}) {
           const session = store.getByCode(ws._code);
           if (!session) return;
 
+          log.debug('connected', { peerId: ws._peerId });
           if (ws._role === 'joiner') {
             session.pendingJoiners.delete(ws._peerId);
             ws.close();
@@ -109,6 +129,7 @@ function start(port, opts = {}) {
       if (!session) return;
 
       if (ws._role === 'host') {
+        log.info('host_disconnect', { code: ws._code });
         // Notify any pending joiners (they're mid-handshake; tell them it's over)
         for (const [, jWs] of session.pendingJoiners) {
           sendError(jWs, 'host_left');
@@ -117,6 +138,7 @@ function start(port, opts = {}) {
         store.remove(session.code);
       } else if (ws._role === 'joiner') {
         if (session.pendingJoiners.delete(ws._peerId)) {
+          log.info('joiner_disconnect', { code: ws._code, joinerId: ws._peerId });
           sendJson(session.hostWs, { type: 'joiner_left', joinerId: ws._peerId });
         }
       }
@@ -124,7 +146,7 @@ function start(port, opts = {}) {
   });
 
   wss.on('listening', () => {
-    console.log(`signaling server listening on :${wss.address().port}`);
+    log.info('listening', { port: wss.address().port });
   });
 
   return wss;
