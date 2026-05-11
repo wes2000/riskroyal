@@ -9,6 +9,7 @@ signal match_started_ack()
 signal host_left()
 signal joiner_left(joiner_id: int)
 signal signaling_error(reason: String)
+signal signal_received(from_peer: int, payload: Dictionary)
 
 var request_code_calls: int = 0
 var connect_to_code_calls: Array = []
@@ -57,3 +58,6 @@ func emit_joiner_left(joiner_id: int) -> void:
 
 func emit_signaling_error(reason: String) -> void:
 	signaling_error.emit(reason)
+
+func emit_signal_received(from_peer: int, payload: Dictionary) -> void:
+	signal_received.emit(from_peer, payload)

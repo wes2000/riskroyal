@@ -9,6 +9,7 @@
 #   host_left()
 #   joiner_left(joiner_id: int)
 #   signaling_error(reason: String)
+#   signal_received(from_peer: int, payload: Dictionary)
 #
 # Methods:
 #   request_code() -> void
@@ -17,6 +18,7 @@
 #   notify_connected(peer_id: int) -> void
 #   send_start_match() -> void
 #   close() -> void
+#   pump() -> void  # called per-tick by the autoload to drain inbound packets
 #
 # Not extended at runtime; serves as living documentation.
 extends Object
