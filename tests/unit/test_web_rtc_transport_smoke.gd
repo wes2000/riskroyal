@@ -29,3 +29,13 @@ func test_feed_remote_signal_with_malformed_payload_does_not_crash():
 	# No sdp_type, no ice_candidate — should silently ignore.
 	t.feed_remote_signal(2, {"junk": "stuff"})
 	assert_true(true)  # No crash = pass.
+
+func test_close_resets_join_and_left_emitted():
+	var t = WebRTCTransport.new()
+	t.start_host()
+	# Force-populate the dedupe state to simulate a peer that joined and left.
+	t._join_emitted[2] = true
+	t._left_emitted[2] = true
+	t.close()
+	assert_eq(t._join_emitted.size(), 0)
+	assert_eq(t._left_emitted.size(), 0)

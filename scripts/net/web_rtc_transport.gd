@@ -26,6 +26,7 @@ const _ICE_SERVERS := {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}
 var _multiplayer_peer  # WebRTCMultiplayerPeer
 var _connections: Dictionary = {}        # remote_peer_id -> WebRTCPeerConnection
 var _join_emitted: Dictionary = {}       # remote_peer_id -> bool (dedupe peer_joined)
+var _left_emitted: Dictionary = {}       # remote_peer_id -> bool (dedupe peer_left)
 var _is_host: bool = false
 var _local_peer_id: int = 0
 
@@ -92,6 +93,7 @@ func close() -> void:
 			c.close()
 	_connections.clear()
 	_join_emitted.clear()
+	_left_emitted.clear()
 	if _multiplayer_peer != null:
 		_multiplayer_peer.close()
 
@@ -109,6 +111,10 @@ func pump() -> void:
 		if s == WebRTCPeerConnection.STATE_CONNECTED and not _join_emitted.get(id, false):
 			_join_emitted[id] = true
 			peer_joined.emit(id)
+		# Detect disconnect transitions for peer_left dedupe.
+		if _join_emitted.get(id, false) and s != WebRTCPeerConnection.STATE_CONNECTED and not _left_emitted.get(id, false):
+			_left_emitted[id] = true
+			peer_left.emit(id)
 
 func _on_sdp_created(type: String, sdp: String, remote_id: int) -> void:
 	if not _connections.has(remote_id):

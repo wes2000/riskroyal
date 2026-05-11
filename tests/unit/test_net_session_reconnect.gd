@@ -55,3 +55,13 @@ func test_reconnect_with_wrong_token_treated_as_new_join():
 func test_reconnect_when_no_disconnected_slots_is_normal_join():
 	signaling.emit_peer_arriving(5, "abc")
 	assert_eq(transport.add_peer_calls, [5])
+
+func test_reconnect_with_matching_token_re_establishes_webrtc():
+	var original_token = _slot_by_peer(2).reconnect_token
+	transport.emit_peer_left(2)
+	# Reconnect with the token, new peer_id 4 from signaling.
+	signaling.emit_peer_arriving(4, original_token)
+	# Even on a successful reconnect, host must call transport.add_peer
+	# so WebRTC re-establishes the data channel for the new peer_id.
+	assert_true(transport.add_peer_calls.has(4),
+		"add_peer must be invoked for the reconnected joiner id")

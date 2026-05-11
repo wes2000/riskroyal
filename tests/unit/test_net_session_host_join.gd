@@ -77,3 +77,22 @@ func test_leave_session_emits_players_changed_when_list_clears():
 	session.players_changed.connect(func(): emitted[0] += 1)
 	session.leave_session()
 	assert_gt(emitted[0], 0, "consumers must be notified when the list clears")
+
+func test_peer_joined_emits_notify_signaling_connected_on_host():
+	session.host_session()
+	signaling.emit_code_issued("ABC234")
+	var received = []
+	session.notify_signaling_connected.connect(func(tid): received.append(tid))
+	transport.emit_peer_joined(2)
+	assert_eq(received, [2],
+		"host must notify signaling with the joiner peer_id so the relay slot is freed")
+
+func test_peer_joined_emits_notify_signaling_connected_on_joiner():
+	session.join_session("ABC234")
+	signaling.emit_peer_id_assigned(2)
+	var received = []
+	session.notify_signaling_connected.connect(func(tid): received.append(tid))
+	# Joiner sees the host appear via transport.peer_joined(1).
+	transport.emit_peer_joined(1)
+	assert_eq(received, [0],
+		"joiner must notify signaling with 0 (server identifies us by socket)")

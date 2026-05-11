@@ -11,6 +11,7 @@ signal session_ended(reason: String)
 signal match_starting(match_start)
 signal send_welcome_to(target_peer_id: int, payload: Dictionary)
 signal sync_player_list_to_all(serialized_players: Array)
+signal notify_signaling_connected(target_peer_id: int)
 
 # _transport must honor res://scripts/net/transport_interface.gd signal contract.
 # _signaling must honor res://scripts/net/signaling_client_interface.gd signal contract.
@@ -85,6 +86,9 @@ func _on_peer_id_assigned(peer_id: int) -> void:
 
 func _on_peer_joined(peer_id: int) -> void:
 	if not is_host:
+		# Joiner side: our P2P is up — tell signaling so it can release the
+		# relay slot. peer_id of 0 means "the server identifies us by socket".
+		notify_signaling_connected.emit(0)
 		return  # joiners see peer events too but the host owns the list
 	if players.size() >= NetConfig.MAX_PLAYERS:
 		return
@@ -97,6 +101,7 @@ func _on_peer_joined(peer_id: int) -> void:
 	var welcome := {"code": code, "players": _serialize_players()}
 	send_welcome_to.emit(peer_id, welcome)
 	_emit_player_list_changed()
+	notify_signaling_connected.emit(peer_id)
 
 func receive_player_info(peer_id: int, name: String, color_index: int) -> bool:
 	if state != NetSessionState.State.LOBBY:
@@ -238,8 +243,8 @@ func _on_peer_arriving(joiner_id: int, reconnect_token: String) -> void:
 				if _timer != null:
 					_timer.stop()
 			_emit_player_list_changed()
-			return
-	# Not a recognized reconnect -> normal new-join SDP path
+			# Fall through to add_peer so WebRTC re-establishes.
+	# Both reconnect and new-join paths need a fresh transport.add_peer.
 	_transport.add_peer(joiner_id)
 
 func _find_disconnected_by_token(token: String):

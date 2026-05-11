@@ -34,6 +34,9 @@ func _ready() -> void:
 	session.send_welcome_to.connect(_send_welcome)
 	session.sync_player_list_to_all.connect(_broadcast_player_list)
 
+	# Tell signaling when a P2P link is up so it can release relay slots.
+	session.notify_signaling_connected.connect(_signaling.notify_connected)
+
 func _process(_delta: float) -> void:
 	if _signaling != null:
 		_signaling.pump()
