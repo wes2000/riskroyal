@@ -16,6 +16,7 @@ signal match_starting(match_start)
 # In Plan C, real WebRTCTransport/SignalingClient will be wired by the autoload bootstrap.
 var _transport
 var _signaling
+var _timer  # injectable Timer-like; null when running legacy 2-arg tests
 var state: int = NetSessionState.State.IDLE
 var pre_pause_state: int = NetSessionState.State.IDLE
 var is_host: bool = false
@@ -23,10 +24,13 @@ var local_peer_id: int = 0
 var code: String = ""
 var players: Array = []
 
-func _init(transport, signaling_client):
+func _init(transport, signaling_client, timer = null):
 	_transport = transport
 	_signaling = signaling_client
+	_timer = timer
 	_connect_signals()
+	if _timer != null:
+		_timer.timeout.connect(_on_grace_timeout)
 
 func _connect_signals() -> void:
 	_signaling.code_issued.connect(_on_code_issued)
@@ -187,6 +191,8 @@ func _on_peer_left(peer_id: int) -> void:
 	if state != NetSessionState.State.PAUSED:
 		pre_pause_state = state
 		_set_state(NetSessionState.State.PAUSED)
+		if _timer != null:
+			_timer.start(NetConfig.RECONNECT_GRACE_SEC)
 	players_changed.emit()
 
 func _on_host_left() -> void:
@@ -208,6 +214,8 @@ func _on_peer_arriving(joiner_id: int, reconnect_token: String) -> void:
 			slot.reconnect_token = _generate_token()
 			if state == NetSessionState.State.PAUSED:
 				_set_state(pre_pause_state)
+				if _timer != null:
+					_timer.stop()
 			players_changed.emit()
 			return
 	# Not a recognized reconnect -> normal new-join SDP path
