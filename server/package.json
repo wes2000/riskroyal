@@ -1,0 +1,17 @@
+{
+  "name": "riskroyal-signaling",
+  "version": "0.1.0",
+  "description": "WebRTC signaling server for Risk Royal lobbies",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
