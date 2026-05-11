@@ -34,6 +34,7 @@ func _connect_signals() -> void:
 	_transport.peer_left.connect(_on_peer_left)
 	_signaling.host_left.connect(_on_host_left)
 	_signaling.peer_arriving.connect(_on_peer_arriving)
+	_signaling.peer_id_assigned.connect(_on_peer_id_assigned)
 
 func host_session() -> void:
 	is_host = true
@@ -43,7 +44,9 @@ func host_session() -> void:
 
 func join_session(code_input: String) -> void:
 	is_host = false
-	_transport.start_client()
+	# Don't call _transport.start_client() yet — we don't know our peer_id.
+	# The signaling server will reply with {type:"joined", peerId} which
+	# fires peer_id_assigned, and _on_peer_id_assigned will do start_client.
 	_signaling.connect_to_code(code_input)
 
 func leave_session() -> void:
@@ -67,6 +70,12 @@ func _on_code_issued(new_code: String) -> void:
 	players = [host_slot]
 	_set_state(NetSessionState.State.LOBBY)
 	players_changed.emit()
+
+func _on_peer_id_assigned(peer_id: int) -> void:
+	if is_host:
+		return  # Host already assigned local_peer_id in host_session().
+	local_peer_id = peer_id
+	_transport.start_client(peer_id)
 
 func _on_peer_joined(peer_id: int) -> void:
 	if not is_host:

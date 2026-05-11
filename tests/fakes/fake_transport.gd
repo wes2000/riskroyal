@@ -9,12 +9,14 @@ signal transport_failed(reason: String)
 var is_hosting: bool = false
 var add_peer_calls: Array = []
 var closed: bool = false
+var start_client_calls: Array = []  # array of peer_ids passed
 
 func start_host() -> void:
 	is_hosting = true
 
-func start_client() -> void:
+func start_client(local_peer_id: int = 0) -> void:
 	is_hosting = false
+	start_client_calls.append(local_peer_id)
 
 func add_peer(joiner_id: int) -> void:
 	add_peer_calls.append(joiner_id)

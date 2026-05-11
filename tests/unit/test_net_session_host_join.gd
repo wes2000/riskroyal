@@ -46,6 +46,18 @@ func test_join_session_connects_to_code():
 	assert_eq(signaling.connect_to_code_calls[0].code, "ABC234")
 	assert_false(session.is_host)
 
+func test_join_session_does_not_start_client_until_peer_id_assigned():
+	session.join_session("ABC234")
+	assert_eq(signaling.connect_to_code_calls.size(), 1)
+	assert_eq(transport.start_client_calls.size(), 0, "no start_client yet")
+	assert_eq(session.local_peer_id, 0, "no local id assigned yet")
+
+func test_peer_id_assigned_sets_local_id_and_starts_client():
+	session.join_session("ABC234")
+	signaling.emit_peer_id_assigned(2)
+	assert_eq(session.local_peer_id, 2)
+	assert_eq(transport.start_client_calls, [2])
+
 func test_leave_session_closes_transport_and_signaling():
 	session.host_session()
 	signaling.emit_code_issued("ABC234")
