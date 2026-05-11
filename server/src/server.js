@@ -63,6 +63,22 @@ function start(port, opts = {}) {
           }
           return sendJson(session.hostWs, forward);
         }
+        case 'signal': {
+          if (!ws._code) return sendError(ws, 'no_session');
+          const session = store.getByCode(ws._code);
+          if (!session) return sendError(ws, 'no_session');
+          const to = msg.to;
+          let target;
+          if (to === 1) target = session.hostWs;
+          else target = session.pendingJoiners.get(to);
+          if (!target) return sendError(ws, 'unknown_peer');
+          store.touch(session);
+          return sendJson(target, {
+            type: 'signal',
+            from: ws._peerId,
+            payload: msg.payload,
+          });
+        }
         default:
           return sendError(ws, 'unknown_type');
       }

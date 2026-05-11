@@ -141,5 +141,51 @@ test('join forwards reconnect_token to host when present', async () => {
   host.close(); joiner.close();
 });
 
+async function fullHandshakeSetup() {
+  const { host, code } = await hostAndGetCode();
+  const joiner = await connect();
+  await send(joiner, { type: 'join', code });
+  await recv(host); // {type:"joiner", joinerId: 2}
+  return { host, joiner, code };
+}
+
+test('signal from host to joiner is relayed opaquely', async () => {
+  const { host, joiner } = await fullHandshakeSetup();
+  await send(host, { type: 'signal', to: 2, payload: { sdp: 'OFFER-XYZ' } });
+  const m = await recv(joiner);
+  assert.equal(m.type, 'signal');
+  assert.equal(m.from, 1);
+  assert.deepEqual(m.payload, { sdp: 'OFFER-XYZ' });
+  host.close(); joiner.close();
+});
+
+test('signal from joiner back to host is relayed', async () => {
+  const { host, joiner } = await fullHandshakeSetup();
+  await send(joiner, { type: 'signal', to: 1, payload: { ice: 'CAND-1' } });
+  const m = await recv(host);
+  assert.equal(m.type, 'signal');
+  assert.equal(m.from, 2);
+  assert.deepEqual(m.payload, { ice: 'CAND-1' });
+  host.close(); joiner.close();
+});
+
+test('signal to unknown peer returns error to sender', async () => {
+  const { host, joiner } = await fullHandshakeSetup();
+  await send(joiner, { type: 'signal', to: 99, payload: {} });
+  const reply = await recv(joiner);
+  assert.equal(reply.type, 'error');
+  assert.equal(reply.reason, 'unknown_peer');
+  host.close(); joiner.close();
+});
+
+test('signal from non-session socket returns error', async () => {
+  const stranger = await connect();
+  await send(stranger, { type: 'signal', to: 1, payload: {} });
+  const reply = await recv(stranger);
+  assert.equal(reply.type, 'error');
+  assert.equal(reply.reason, 'no_session');
+  stranger.close();
+});
+
 // Exports for later tasks to use:
 module.exports = { connect, send, recv };
