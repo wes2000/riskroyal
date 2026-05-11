@@ -72,3 +72,28 @@ func test_peer_join_emits_players_changed():
 	session.players_changed.connect(func(): emitted.append(true))
 	transport.emit_peer_joined(2)
 	assert_eq(emitted.size(), 1)
+
+func test_peer_join_caps_at_max_players():
+	# Host is already in the lobby (peer_id 1). Add 7 more to hit MAX_PLAYERS=8.
+	for i in range(2, 9):
+		transport.emit_peer_joined(i)
+	assert_eq(session.players.size(), 8)
+	var emitted = [0]
+	session.players_changed.connect(func(): emitted[0] += 1)
+	# 9th peer_joined must be rejected silently: no slot, no signal.
+	transport.emit_peer_joined(9)
+	assert_eq(session.players.size(), 8)
+	assert_eq(emitted[0], 0, "rejected join must not fire players_changed")
+
+func test_receive_player_info_rejects_outside_lobby_state():
+	transport.emit_peer_joined(2)
+	session.receive_player_info(2, "Maya", 3)
+	session.receive_set_ready(1, true)
+	session.receive_set_ready(2, true)
+	session.start_match()
+	assert_eq(session.state, NetSessionState.State.MATCH)
+	var ok = session.receive_player_info(2, "NewName", 5)
+	assert_false(ok)
+	var s = _find_slot(2)
+	assert_eq(s.name, "Maya", "name unchanged after rejection")
+	assert_eq(s.color_index, 3, "color unchanged after rejection")

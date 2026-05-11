@@ -55,3 +55,13 @@ func test_leave_session_closes_transport_and_signaling():
 	assert_eq(session.state, NetSessionState.State.IDLE)
 	assert_eq(session.players.size(), 0)
 	assert_eq(session.code, "")
+
+func test_leave_session_emits_players_changed_when_list_clears():
+	session.host_session()
+	signaling.emit_code_issued("ABC234")
+	transport.emit_peer_joined(2)
+	assert_eq(session.players.size(), 2)
+	var emitted = [0]
+	session.players_changed.connect(func(): emitted[0] += 1)
+	session.leave_session()
+	assert_gt(emitted[0], 0, "consumers must be notified when the list clears")

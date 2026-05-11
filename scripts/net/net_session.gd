@@ -45,11 +45,14 @@ func join_session(code_input: String) -> void:
 func leave_session() -> void:
 	_transport.close()
 	_signaling.close()
+	var had_players := players.size() > 0
 	players = []
 	code = ""
 	is_host = false
 	local_peer_id = 0
 	_set_state(NetSessionState.State.IDLE)
+	if had_players:
+		players_changed.emit()
 
 func _on_code_issued(new_code: String) -> void:
 	code = new_code
@@ -64,6 +67,8 @@ func _on_code_issued(new_code: String) -> void:
 func _on_peer_joined(peer_id: int) -> void:
 	if not is_host:
 		return  # joiners see peer events too but the host owns the list
+	if players.size() >= NetConfig.MAX_PLAYERS:
+		return
 	var slot = PlayerSlot.new()
 	slot.peer_id = peer_id
 	slot.seat_index = players.size()
@@ -73,6 +78,8 @@ func _on_peer_joined(peer_id: int) -> void:
 	players_changed.emit()
 
 func receive_player_info(peer_id: int, name: String, color_index: int) -> bool:
+	if state != NetSessionState.State.LOBBY:
+		return false
 	var slot = _find_slot(peer_id)
 	if slot == null:
 		return false
@@ -159,6 +166,8 @@ func _on_peer_left(peer_id: int) -> void:
 func _on_host_left() -> void:
 	if state == NetSessionState.State.IDLE:
 		return
+	if state == NetSessionState.State.PAUSED:
+		return  # already paused; don't overwrite pre_pause_state
 	pre_pause_state = state
 	_set_state(NetSessionState.State.PAUSED)
 

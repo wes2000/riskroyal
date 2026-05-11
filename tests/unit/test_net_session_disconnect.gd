@@ -53,3 +53,17 @@ func test_peer_left_emits_state_changed():
 	session.state_changed.connect(func(s): emitted.append(s))
 	transport.emit_peer_left(2)
 	assert_true(emitted.has(NetSessionState.State.PAUSED))
+
+func test_host_left_twice_does_not_overwrite_pre_pause_state():
+	# A client in LOBBY state receives host_left twice. The first call should
+	# set pre_pause_state=LOBBY and state=PAUSED. The second must NOT overwrite
+	# pre_pause_state with PAUSED (otherwise resumption is broken).
+	var client = NetSession.new(FakeTransport.new(), FakeSignalingClient.new())
+	client.join_session("ABC234")
+	client.state = NetSessionState.State.LOBBY
+	client._signaling.emit_host_left()
+	assert_eq(client.state, NetSessionState.State.PAUSED)
+	assert_eq(client.pre_pause_state, NetSessionState.State.LOBBY)
+	client._signaling.emit_host_left()
+	assert_eq(client.pre_pause_state, NetSessionState.State.LOBBY,
+		"second host_left must not overwrite pre_pause_state with PAUSED")
