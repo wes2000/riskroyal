@@ -212,5 +212,67 @@ test('connected from host (with peerId) releases that joiner', async () => {
   host.close(); joiner.close();
 });
 
+test('idle session is pruned after 10 minutes', async () => {
+  const helpers = require('./_helpers');
+  let now = 0;
+  const customEnv = await helpers.startTestServer({
+    store: require('../src/session-store').createSessionStore({
+      clock: () => now, ttlMs: 600000,
+    }),
+  });
+
+  const ws = new WebSocket(`ws://localhost:${customEnv.port}`);
+  await new Promise((r) => ws.once('open', r));
+  ws.send(JSON.stringify({ type: 'host' }));
+  const reply = await new Promise((r) => ws.once('message', (d) => r(JSON.parse(d))));
+  const code = reply.code;
+
+  assert.ok(customEnv.store.getByCode(code));
+  now = 700000;
+  customEnv.store.pruneExpired();
+  assert.equal(customEnv.store.getByCode(code), null);
+
+  ws.close();
+  await customEnv.close();
+});
+
+test('server close clears the prune interval (no dangling timers)', async () => {
+  const helpers = require('./_helpers');
+  const customEnv = await helpers.startTestServer();
+  const activeHandlesBefore = process._getActiveHandles().length;
+  await customEnv.close();
+  // Allow setImmediate tick
+  await new Promise((r) => setImmediate(r));
+  const activeHandlesAfter = process._getActiveHandles().length;
+  assert.ok(activeHandlesAfter <= activeHandlesBefore,
+    `handles before=${activeHandlesBefore} after=${activeHandlesAfter}`);
+});
+
+test('messages from a socket whose session was pruned return no_session', async () => {
+  const helpers = require('./_helpers');
+  let now = 0;
+  const customEnv = await helpers.startTestServer({
+    store: require('../src/session-store').createSessionStore({
+      clock: () => now, ttlMs: 600000,
+    }),
+  });
+
+  const host = new WebSocket(`ws://localhost:${customEnv.port}`);
+  await new Promise((r) => host.once('open', r));
+  host.send(JSON.stringify({ type: 'host' }));
+  await new Promise((r) => host.once('message', r)); // discard code
+
+  now = 700000;
+  customEnv.store.pruneExpired();
+
+  host.send(JSON.stringify({ type: 'signal', to: 2, payload: {} }));
+  const reply = await new Promise((r) => host.once('message', (d) => r(JSON.parse(d))));
+  assert.equal(reply.type, 'error');
+  assert.equal(reply.reason, 'no_session');
+
+  host.close();
+  await customEnv.close();
+});
+
 // Exports for later tasks to use:
 module.exports = { connect, send, recv };

@@ -14,6 +14,8 @@ function start(port, opts = {}) {
   const store = opts.store || createSessionStore({});
   const wss = new WebSocketServer({ port });
   wss._store = store;
+  const pruneInterval = setInterval(() => store.pruneExpired(), 60000);
+  wss.on('close', () => clearInterval(pruneInterval));
 
   wss.on('connection', (ws) => {
     ws._role = null;       // 'host' | 'joiner'
