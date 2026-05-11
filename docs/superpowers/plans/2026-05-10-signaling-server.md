@@ -62,7 +62,7 @@ The spec's §6.1 protocol table lists the message types Godot clients send and t
 | `error: host_left` | Server → pending joiner | Host's WebSocket closed while joiner was still in handshake. |
 | `error: already_host` | Server → client | Client already sent `host` on this socket; rejecting a second `host`. |
 | `error: already_joined` | Server → client | Client already sent `join` on this socket; rejecting a second `join`. |
-| `error: no_session` | Server → client | `signal` or `connected` arrived on a socket that has no associated session (e.g., never sent `host`/`join`, or session was pruned). |
+| `error: no_session` | Server → client | `signal` arrived on a socket that has no associated session (e.g., never sent `host`/`join`, or session was pruned). `connected` is a teardown hint and is silently ignored in this case, not errored. |
 | `error: unknown_peer` | Server → client | `signal` with `to: N` where N isn't a known peer in this session. |
 | `error: bad_json` | Server → client | Malformed JSON message. |
 | `error: unknown_type` | Server → client | Recognized envelope but `type` is unknown. |
