@@ -3,10 +3,12 @@ extends RefCounted
 const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 const PlayerSlot = preload("res://scripts/data/player_slot.gd")
 const NetConfig = preload("res://scripts/net/net_config.gd")
+const MatchStart = preload("res://scripts/data/match_start.gd")
 
 signal players_changed()
 signal state_changed(new_state: int)
 signal session_ended(reason: String)
+signal match_starting(match_start)
 
 var _transport
 var _signaling
@@ -116,6 +118,29 @@ func kick(peer_id: int) -> bool:
 	for i in players.size():
 		players[i].seat_index = i
 	players_changed.emit()
+	return true
+
+func start_match() -> bool:
+	if not is_host:
+		return false
+	if state != NetSessionState.State.LOBBY:
+		return false
+	if players.size() < 2:
+		return false
+	for p in players:
+		if not p.ready:
+			return false
+
+	var ms = MatchStart.new()
+	ms.seats = players.duplicate()
+	ms.host_peer_id = 1
+	ms.rng_seed = randi() | (randi() << 32)
+	ms.mode = "quick_clash"
+	ms.rules = {}
+
+	_signaling.send_start_match()
+	_set_state(NetSessionState.State.MATCH)
+	match_starting.emit(ms)
 	return true
 
 func _find_slot(peer_id: int):
