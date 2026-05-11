@@ -184,6 +184,30 @@ func _find_disconnected_by_token(token: String):
 			return s
 	return null
 
+func _on_grace_timeout() -> void:
+	if state != NetSessionState.State.PAUSED:
+		return
+
+	if is_host:
+		# Remove disconnected slots and resume from pre_pause_state.
+		var to_remove = []
+		for s in players:
+			if not s.connected:
+				to_remove.append(s)
+		if to_remove.is_empty():
+			_set_state(pre_pause_state)
+			return
+		for s in to_remove:
+			players.erase(s)
+		for i in players.size():
+			players[i].seat_index = i
+		_set_state(pre_pause_state)
+		players_changed.emit()
+	else:
+		# Client lost host -> end session.
+		leave_session()
+		session_ended.emit("host_lost")
+
 func _find_slot(peer_id: int):
 	for s in players:
 		if s.peer_id == peer_id:
