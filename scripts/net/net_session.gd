@@ -97,6 +97,18 @@ func receive_player_info(peer_id: int, name: String, color_index: int) -> bool:
 	players_changed.emit()
 	return true
 
+# Local-user-facing actions. In Plan B, host invokes the host-side validator
+# directly. In Plan C, joiners will route through an RPC to the host.
+func set_ready(value: bool) -> void:
+	if is_host:
+		receive_set_ready(local_peer_id, value)
+	# TODO(plan-c): non-host case routes via rpc.request_set_ready(value) to host
+
+func set_color(index: int) -> void:
+	if is_host:
+		receive_set_color(local_peer_id, index)
+	# TODO(plan-c): non-host case routes via rpc.request_set_color(index) to host
+
 func receive_set_ready(peer_id: int, value: bool) -> bool:
 	if state != NetSessionState.State.LOBBY:
 		return false
@@ -160,8 +172,9 @@ func start_match() -> bool:
 
 func _on_peer_left(peer_id: int) -> void:
 	var slot = _find_slot(peer_id)
-	if slot != null:
-		slot.connected = false
+	if slot == null:
+		return  # stale/unknown peer_left; ignore (could fire post-kick or post-grace)
+	slot.connected = false
 	if state != NetSessionState.State.PAUSED:
 		pre_pause_state = state
 		_set_state(NetSessionState.State.PAUSED)

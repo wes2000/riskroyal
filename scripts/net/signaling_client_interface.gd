@@ -11,7 +11,7 @@
 #
 # Methods:
 #   request_code() -> void
-#   connect_to_code(code: String, reconnect_token: String) -> void
+#   connect_to_code(code: String, reconnect_token: String = "") -> void
 #   send_signal(to: int, payload: Dictionary) -> void
 #   notify_connected(peer_id: int) -> void
 #   send_start_match() -> void

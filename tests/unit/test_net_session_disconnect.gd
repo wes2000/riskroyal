@@ -54,6 +54,17 @@ func test_peer_left_emits_state_changed():
 	transport.emit_peer_left(2)
 	assert_true(emitted.has(NetSessionState.State.PAUSED))
 
+func test_peer_left_unknown_peer_is_noop():
+	var initial_state = session.state
+	var initial_size = session.players.size()
+	var emitted = [0]
+	session.players_changed.connect(func(): emitted[0] += 1)
+	session.state_changed.connect(func(_s): emitted[0] += 1)
+	transport.emit_peer_left(99)
+	assert_eq(session.state, initial_state, "state unchanged for unknown peer")
+	assert_eq(session.players.size(), initial_size, "players unchanged")
+	assert_eq(emitted[0], 0, "no signals emitted")
+
 func test_host_left_twice_does_not_overwrite_pre_pause_state():
 	# A client in LOBBY state receives host_left twice. The first call should
 	# set pre_pause_state=LOBBY and state=PAUSED. The second must NOT overwrite

@@ -74,6 +74,17 @@ func test_kick_rejects_unknown_peer():
 	assert_false(ok)
 	assert_eq(session.players.size(), before, "players unchanged on unknown-peer kick")
 
+func test_set_ready_public_wrapper_routes_through_host_validator():
+	var ok_before = _slot(1).ready
+	session.set_ready(true)
+	assert_true(_slot(1).ready)
+	# The wrapper should have flipped the host's slot via the simulated RPC path.
+	assert_false(ok_before)
+
+func test_set_color_public_wrapper_routes_through_host_validator():
+	session.set_color(7)
+	assert_eq(_slot(1).color_index, 7)
+
 func test_actions_emit_players_changed():
 	# Array (reference type) used because GDScript lambdas do not propagate
 	# reassignment of captured value types back to outer scope.
