@@ -9,6 +9,8 @@ signal players_changed()
 signal state_changed(new_state: int)
 signal session_ended(reason: String)
 signal match_starting(match_start)
+signal send_welcome_to(target_peer_id: int, payload: Dictionary)
+signal sync_player_list_to_all(serialized_players: Array)
 
 # _transport must honor res://scripts/net/transport_interface.gd signal contract.
 # _signaling must honor res://scripts/net/signaling_client_interface.gd signal contract.
@@ -63,7 +65,7 @@ func leave_session() -> void:
 	local_peer_id = 0
 	_set_state(NetSessionState.State.IDLE)
 	if had_players:
-		players_changed.emit()
+		_emit_player_list_changed()
 
 func _on_code_issued(new_code: String) -> void:
 	code = new_code
@@ -73,7 +75,7 @@ func _on_code_issued(new_code: String) -> void:
 	host_slot.seat_index = 0
 	players = [host_slot]
 	_set_state(NetSessionState.State.LOBBY)
-	players_changed.emit()
+	_emit_player_list_changed()
 
 func _on_peer_id_assigned(peer_id: int) -> void:
 	if is_host:
@@ -92,7 +94,9 @@ func _on_peer_joined(peer_id: int) -> void:
 	slot.connected = true
 	slot.reconnect_token = _generate_token()
 	players.append(slot)
-	players_changed.emit()
+	var welcome := {"code": code, "players": _serialize_players()}
+	send_welcome_to.emit(peer_id, welcome)
+	_emit_player_list_changed()
 
 func receive_player_info(peer_id: int, name: String, color_index: int) -> bool:
 	if state != NetSessionState.State.LOBBY:
@@ -107,8 +111,25 @@ func receive_player_info(peer_id: int, name: String, color_index: int) -> bool:
 	var normalized = _normalize_name(name, slot.seat_index + 1)
 	slot.name = normalized
 	slot.color_index = color_index
-	players_changed.emit()
+	_emit_player_list_changed()
 	return true
+
+func rpc_receive_welcome(payload: Dictionary) -> void:
+	if is_host:
+		return  # Host doesn't receive welcomes.
+	code = payload.get("code", "")
+	var raw_players: Array = payload.get("players", [])
+	players = []
+	for d in raw_players:
+		players.append(PlayerSlot.from_dict(d))
+	_set_state(NetSessionState.State.LOBBY)
+	players_changed.emit()
+
+func rpc_sync_player_list(serialized_players: Array) -> void:
+	players = []
+	for d in serialized_players:
+		players.append(PlayerSlot.from_dict(d))
+	players_changed.emit()
 
 # Local-user-facing actions. In Plan B, host invokes the host-side validator
 # directly. In Plan C, joiners will route through an RPC to the host.
@@ -129,7 +150,7 @@ func receive_set_ready(peer_id: int, value: bool) -> bool:
 	if slot == null:
 		return false
 	slot.ready = value
-	players_changed.emit()
+	_emit_player_list_changed()
 	return true
 
 func receive_set_color(peer_id: int, color_index: int) -> bool:
@@ -142,7 +163,7 @@ func receive_set_color(peer_id: int, color_index: int) -> bool:
 		if other.peer_id != peer_id and other.color_index == color_index and color_index >= 0:
 			return false
 	slot.color_index = color_index
-	players_changed.emit()
+	_emit_player_list_changed()
 	return true
 
 func kick(peer_id: int) -> bool:
@@ -157,7 +178,7 @@ func kick(peer_id: int) -> bool:
 	# Reassign seat indices to remain contiguous.
 	for i in players.size():
 		players[i].seat_index = i
-	players_changed.emit()
+	_emit_player_list_changed()
 	return true
 
 func start_match() -> bool:
@@ -193,7 +214,7 @@ func _on_peer_left(peer_id: int) -> void:
 		_set_state(NetSessionState.State.PAUSED)
 		if _timer != null:
 			_timer.start(NetConfig.RECONNECT_GRACE_SEC)
-	players_changed.emit()
+	_emit_player_list_changed()
 
 func _on_host_left() -> void:
 	if state == NetSessionState.State.IDLE:
@@ -216,7 +237,7 @@ func _on_peer_arriving(joiner_id: int, reconnect_token: String) -> void:
 				_set_state(pre_pause_state)
 				if _timer != null:
 					_timer.stop()
-			players_changed.emit()
+			_emit_player_list_changed()
 			return
 	# Not a recognized reconnect -> normal new-join SDP path
 	_transport.add_peer(joiner_id)
@@ -245,7 +266,7 @@ func _on_grace_timeout() -> void:
 		for i in players.size():
 			players[i].seat_index = i
 		_set_state(pre_pause_state)
-		players_changed.emit()
+		_emit_player_list_changed()
 	else:
 		# Client lost host -> end session.
 		leave_session()
@@ -271,3 +292,14 @@ func _set_state(new_state: int) -> void:
 		return
 	state = new_state
 	state_changed.emit(state)
+
+func _emit_player_list_changed() -> void:
+	players_changed.emit()
+	if is_host:
+		sync_player_list_to_all.emit(_serialize_players())
+
+func _serialize_players() -> Array:
+	var out: Array = []
+	for p in players:
+		out.append(p.to_dict())
+	return out
