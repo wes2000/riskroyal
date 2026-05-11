@@ -80,6 +80,44 @@ func receive_player_info(peer_id: int, name: String, color_index: int) -> bool:
 	players_changed.emit()
 	return true
 
+func receive_set_ready(peer_id: int, value: bool) -> bool:
+	if state != NetSessionState.State.LOBBY:
+		return false
+	var slot = _find_slot(peer_id)
+	if slot == null:
+		return false
+	slot.ready = value
+	players_changed.emit()
+	return true
+
+func receive_set_color(peer_id: int, color_index: int) -> bool:
+	if state != NetSessionState.State.LOBBY:
+		return false
+	var slot = _find_slot(peer_id)
+	if slot == null:
+		return false
+	for other in players:
+		if other.peer_id != peer_id and other.color_index == color_index and color_index >= 0:
+			return false
+	slot.color_index = color_index
+	players_changed.emit()
+	return true
+
+func kick(peer_id: int) -> bool:
+	if not is_host:
+		return false
+	if state != NetSessionState.State.LOBBY:
+		return false
+	var slot = _find_slot(peer_id)
+	if slot == null:
+		return false
+	players.erase(slot)
+	# Reassign seat indices to remain contiguous.
+	for i in players.size():
+		players[i].seat_index = i
+	players_changed.emit()
+	return true
+
 func _find_slot(peer_id: int):
 	for s in players:
 		if s.peer_id == peer_id:
