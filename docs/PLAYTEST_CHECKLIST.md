@@ -37,3 +37,21 @@ Plan reference: docs/superpowers/specs/2026-05-10-networking-lobby-foundation-de
 | 9  | Match start handoff                     | USER     | Run by user with two `godot --path .` windows (or 8 windows for scenario 3). |
 | 10 | Invalid code                            | USER     | Run by user with two `godot --path .` windows (or 8 windows for scenario 3). |
 | 11 | Strict-NAT failure                      | DEFERRED | Requires real strict-NAT environment.                            |
+
+## Sub-project #2: Match Loop & Economy Core (Plan B)
+
+Plan reference: docs/superpowers/specs/2026-05-11-match-loop-and-economy-design.md §9.6
+Implemented: 2026-05-11
+
+Run by launching two `godot --path .` windows on this machine; click Host in one, Join with the host's code in the other.
+
+| # | Scenario | Status | Notes |
+|---|----------|--------|-------|
+| 1 | Match runs all 5 events without errors | USER | Both peers should see PhaseIndicator advance through 5 × HOUSE_REVEAL → ... → HOUSE_TWIST cycle. |
+| 2 | Player panels update on resource changes | USER | After each event, chip / Crown / Heat values update on both peers. |
+| 3 | Phase indicator advances correctly | USER | Text reads "Event N/5: PHASE_NAME" throughout. |
+| 4 | Resolution overlay shows substeps with readable pacing | USER | 5 substep lines appear with ~600ms between them. |
+| 5 | Ante skip works when a player has 0 chips | USER | Set a player's chips to 0 via debug; ANTE phase marks them inactive; event continues with remaining players. |
+| 6 | Match ends correctly; rankings displayed | USER | After event 5, MatchEndOverlay shows ranked players. |
+| 7 | Back-to-Lobby returns all peers to Lobby scene | USER | Host clicks Back; both peers' scenes change to Lobby. |
+| 8 | Quit returns the quitting peer to MainMenu | USER | Anyone clicks Quit; just that peer goes back to MainMenu; other peer stays in match (or shows host-disconnected message if host quit). |
