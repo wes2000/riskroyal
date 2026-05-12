@@ -1,0 +1,32 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/match_scene.gd" id="1"]
+
+[node name="MatchScene" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="PhaseIndicator" type="Label" parent="VBox"]
+text = "Loading match..."
+
+[node name="PlayerPanels" type="HBoxContainer" parent="VBox"]
+
+[node name="EventSlot" type="Container" parent="VBox"]
+custom_minimum_size = Vector2(0, 200)
+
+[node name="ResolutionSlot" type="Container" parent="VBox"]
+
+[node name="MatchEndSlot" type="Container" parent="VBox"]
+
+[node name="PauseOverlay" type="PanelContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+visible = false
+
+[node name="PauseLabel" type="Label" parent="PauseOverlay"]
+text = "Paused (player disconnected)"
