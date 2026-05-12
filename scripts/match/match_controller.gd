@@ -135,6 +135,8 @@ func start_match(match_start) -> void:
 	state.rng_seed = match_start.rng_seed
 	state.seed_rng()
 	state.event_index = 0
+	# Deal starter pack of 3 random commons (excluding sabotage)
+	_deal_starter_pack()
 	_set_phase(MatchPhase.Phase.HOUSE_REVEAL)
 
 func _send_rpc(method_name: String, args: Array = []) -> void:
@@ -599,6 +601,30 @@ func _resolve_bounties(result) -> void:
 				_send_rpc("_rpc_bounty_claimed", [c_id, bounty.to_dict(), split])
 				bounty_claimed.emit(c_id, bounty.to_dict(), split)
 	state.bounties = []
+
+func _deal_starter_pack() -> void:
+	if not is_host:
+		return
+	var pool = CardRegistry.starter_pool()
+	if pool.is_empty():
+		return
+	var serialized_hands: Dictionary = {}
+	for p in state.players:
+		var hand: Array = []
+		for i in MatchConfig.STARTER_PACK_SIZE:
+			var idx = state.rng.randi() % pool.size()
+			hand.append(pool[idx])
+		p.hand = hand
+		serialized_hands[p.peer_id] = hand.duplicate()
+	_send_rpc("_rpc_starter_pack_dealt", [serialized_hands])
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_starter_pack_dealt(hands: Dictionary) -> void:
+	for pid_key in hands.keys():
+		var pid = int(pid_key)
+		var p = state.find_player(pid)
+		if p != null:
+			p.hand = hands[pid_key].duplicate()
 
 func _process_match_end() -> void:
 	var rankings = state.players.duplicate()
