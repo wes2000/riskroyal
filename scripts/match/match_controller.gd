@@ -26,6 +26,10 @@ signal bounty_claimed(claimant_peer_id: int, bounty_dict: Dictionary, reward_chi
 signal bounty_unclaimed(bounty_dict: Dictionary)
 signal card_effect_applied(peer_id: int, card_id: String, effect_result: Dictionary)
 signal card_play_rejected(card_id: String, reason: String)
+signal shop_opened(offered_card_ids: Array)
+signal shop_closed
+signal shop_purchase_confirmed(peer_id: int, card_id: String, cost_chips: int)
+signal shop_purchase_rejected(peer_id: int, card_id: String, reason: String)
 
 var state: MatchState
 var is_host: bool = false
@@ -62,6 +66,10 @@ var event_timeout_sec_override: float = -1.0
 # Negative = use MatchConfig.BET_LOADOUT_TIMEOUT_SEC. 0.0 = bypass timer entirely.
 var bet_loadout_timeout_sec_override: float = -1.0
 
+# Test seam: override SHOP phase timeout (mirror of bet_loadout pattern).
+# Negative = use MatchConfig.SHOP_TIMEOUT_SEC. 0.0 = synchronous open, no auto-close.
+var shop_timeout_sec_override: float = -1.0
+
 func _default_event_factory(path: String):
 	var ps = load(path)
 	if ps == null:
@@ -77,6 +85,11 @@ func _bet_loadout_timeout_sec() -> float:
 	if bet_loadout_timeout_sec_override >= 0.0:
 		return bet_loadout_timeout_sec_override
 	return float(MatchConfig.BET_LOADOUT_TIMEOUT_SEC)
+
+func _shop_timeout_sec() -> float:
+	if shop_timeout_sec_override >= 0.0:
+		return shop_timeout_sec_override
+	return float(MatchConfig.SHOP_TIMEOUT_SEC)
 
 func _start_event_timeout_watchdog() -> void:
 	if not is_inside_tree():
@@ -269,6 +282,7 @@ func _enter_phase_behavior() -> void:
 			_process_bounty_heat_update()
 			await _schedule_advance()
 		MatchPhase.Phase.SHOP:
+			await _process_shop()
 			await _schedule_advance()
 		MatchPhase.Phase.HOUSE_TWIST:
 			await _schedule_advance()
@@ -328,6 +342,119 @@ func _all_active_ready(active_peer_ids: Array) -> bool:
 		if not state.pending_wagers.has(pid):
 			return false
 	return true
+
+func _process_shop() -> void:
+	if not is_host:
+		return
+	var pool = CardRegistry.shop_pool().duplicate()
+	pool.shuffle()
+	state.current_shop_offer = pool.slice(0, min(MatchConfig.SHOP_OFFER_SIZE, pool.size()))
+	state.shop_done_peers = []
+	_send_rpc("_rpc_shop_opened", [state.current_shop_offer.duplicate()])
+	shop_opened.emit(state.current_shop_offer.duplicate())
+	var timeout_sec = _shop_timeout_sec()
+	if timeout_sec <= 0.0:
+		# Test-bypass path: shop is open; do NOT await, do NOT auto-close.
+		# Tests inspect state.current_shop_offer/shop_opened immediately. Any
+		# test exercising the close path calls _close_shop() directly.
+		return
+	if not is_inside_tree():
+		# Detached controller (no scene): treat like timeout=0 — caller
+		# drives the close path explicitly.
+		return
+	var timer = get_tree().create_timer(timeout_sec)
+	while timer.time_left > 0.0:
+		if not is_inside_tree():
+			return  # node freed (e.g. add_child_autofree cleanup); abort silently
+		if _all_active_done_in_shop():
+			break
+		await get_tree().process_frame
+	_close_shop()
+
+func _all_active_done_in_shop() -> bool:
+	for p in state.players:
+		if p.is_active_this_event and not (p.peer_id in state.shop_done_peers):
+			return false
+	return true
+
+func _close_shop() -> void:
+	state.current_shop_offer = []
+	state.shop_done_peers = []
+	_send_rpc("_rpc_shop_closed", [])
+	shop_closed.emit()
+
+func _card_cost(card_id: String) -> int:
+	var card = CardRegistry.get_card(card_id)
+	return int(card.get("cost_chips", 0))
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_shop_buy_requested(peer_id: int, card_id: String) -> void:
+	if not is_host:
+		return
+	if state.phase != MatchPhase.Phase.SHOP:
+		return
+	if not (card_id in state.current_shop_offer):
+		_send_rpc_to_peer(peer_id, "_rpc_shop_buy_rejected", [card_id, "not_in_offer"])
+		return
+	if peer_id in state.shop_done_peers:
+		return  # silent: second buy attempt
+	var player = state.find_player(peer_id)
+	if player == null:
+		return
+	var cost = _card_cost(card_id)
+	if player.chips < cost:
+		_send_rpc_to_peer(peer_id, "_rpc_shop_buy_rejected", [card_id, "insufficient_chips"])
+		return
+	if player.hand.size() >= MatchConfig.MAX_HAND_SIZE:
+		_send_rpc_to_peer(peer_id, "_rpc_shop_buy_rejected", [card_id, "hand_full"])
+		return
+	player.chips -= cost
+	player.hand.append(card_id)
+	state.shop_done_peers.append(peer_id)
+	player_resources_changed.emit(peer_id)
+	_send_rpc("_rpc_shop_purchase_confirmed", [peer_id, card_id, cost])
+	_send_rpc("_rpc_apply_deltas", [[{"peer_id": peer_id, "chip_delta": -cost, "crown_delta": 0, "heat_delta": 0}]])
+	shop_purchase_confirmed.emit(peer_id, card_id, cost)
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_shop_done(peer_id: int) -> void:
+	if not is_host:
+		return
+	if state.phase != MatchPhase.Phase.SHOP:
+		return
+	if not (peer_id in state.shop_done_peers):
+		state.shop_done_peers.append(peer_id)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_shop_opened(offered: Array) -> void:
+	state.current_shop_offer = offered.duplicate()
+	state.shop_done_peers = []
+	shop_opened.emit(offered)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_shop_closed() -> void:
+	state.current_shop_offer = []
+	state.shop_done_peers = []
+	shop_closed.emit()
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_shop_purchase_confirmed(peer_id: int, card_id: String, cost_chips: int) -> void:
+	var player = state.find_player(peer_id)
+	if player != null and not (card_id in player.hand):
+		player.hand.append(card_id)
+	shop_purchase_confirmed.emit(peer_id, card_id, cost_chips)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_shop_buy_rejected(card_id: String, reason: String) -> void:
+	shop_purchase_rejected.emit(0, card_id, reason)
+
+func submit_shop_buy(card_id: String) -> void:
+	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	_send_rpc("_rpc_shop_buy_requested", [my_peer_id, card_id])
+
+func submit_shop_done() -> void:
+	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	_send_rpc("_rpc_shop_done", [my_peer_id])
 
 func _process_main_event() -> void:
 	if state.current_event_id.is_empty():
