@@ -82,3 +82,14 @@ func test_compute_reward_heat_band_public_enemy():
 	var b = _make_bounty("heat", 1, 10)
 	b.reward_chips = 150
 	assert_eq(Bounty.compute_reward(b), 300)
+
+func test_compute_reward_uses_card_registry_heat_multiplier():
+	# Single source of truth: Bounty.compute_reward delegates to
+	# CardRegistry.heat_multiplier. Verify that calling
+	# CardRegistry.heat_multiplier directly with the same heat produces
+	# the same scaling factor as compute_reward applies.
+	var b = _make_bounty("heat", 1, 7)
+	b.reward_chips = 200
+	var CardRegistry = load("res://scripts/cards/card_registry.gd")
+	var expected = int(200 * CardRegistry.heat_multiplier(7))
+	assert_eq(Bounty.compute_reward(b), expected)

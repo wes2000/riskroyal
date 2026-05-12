@@ -5,6 +5,8 @@
 # suppress bounty rewards.
 extends RefCounted
 
+const CardRegistry = preload("res://scripts/cards/card_registry.gd")
+
 var origin: String = ""            # "leader" | "heat" | "placed"
 var target: int = 0                # peer_id
 var condition: String = ""         # "bust" (only condition in MVP)
@@ -51,14 +53,4 @@ static func satisfies(bounty, result, claimant_peer_id: int) -> bool:
 # Heat-scaled reward. Uses placed_at_target_heat captured at placement so
 # Heat Shield (which halves event-time heat_delta) doesn't reduce payouts.
 static func compute_reward(bounty) -> int:
-	return int(bounty.reward_chips * _heat_multiplier(bounty.placed_at_target_heat))
-
-# Heat-bounty scaling per design doc §6.5: 0-2 = base, 3-5 = +25%, 6-8 = +50%, 9-10 = +100%
-static func _heat_multiplier(heat: int) -> float:
-	if heat <= 2:
-		return 1.0
-	if heat <= 5:
-		return 1.25
-	if heat <= 8:
-		return 1.5
-	return 2.0
+	return int(bounty.reward_chips * CardRegistry.heat_multiplier(bounty.placed_at_target_heat))

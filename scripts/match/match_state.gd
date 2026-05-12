@@ -47,7 +47,7 @@ func to_dict() -> Dictionary:
 		"current_event_id": current_event_id,
 		"rng_seed": rng_seed,
 		"pending_wagers": pending_wagers.duplicate(true),
-		"bounties": bounties.duplicate(true),
+		"bounties": _serialize_bounties(),
 		"current_shop_offer": current_shop_offer.duplicate(),
 		"shop_done_peers": shop_done_peers.duplicate(),
 		"event_modifiers": event_modifiers.duplicate(true),
@@ -61,7 +61,7 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	s.current_event_id = d.get("current_event_id", "")
 	s.rng_seed = d.get("rng_seed", 0)
 	s.pending_wagers = d.get("pending_wagers", {}).duplicate(true)
-	s.bounties = d.get("bounties", []).duplicate(true)
+	s.bounties = _deserialize_bounties(d.get("bounties", []))
 	s.current_shop_offer = d.get("current_shop_offer", []).duplicate()
 	s.shop_done_peers = d.get("shop_done_peers", []).duplicate()
 	s.event_modifiers = d.get("event_modifiers", {}).duplicate(true)
@@ -70,3 +70,26 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	for raw in d.get("players", []):
 		s.players.append(MatchPlayer.from_dict(raw))
 	return s
+
+const Bounty = preload("res://scripts/match/bounty.gd")
+
+func _serialize_bounties() -> Array:
+	var out: Array = []
+	for b in bounties:
+		# Bounty instances expose to_dict; the live RPC path always populates
+		# state.bounties with Bounty refs. Defensive fallback for dicts so
+		# tests that seed raw dicts still round-trip.
+		if b is Object and b.has_method("to_dict"):
+			out.append(b.to_dict())
+		else:
+			out.append(b.duplicate(true) if b is Dictionary else b)
+	return out
+
+static func _deserialize_bounties(raw: Array) -> Array:
+	var out: Array = []
+	for d in raw:
+		if d is Dictionary:
+			out.append(Bounty.from_dict(d))
+		else:
+			out.append(d)
+	return out
