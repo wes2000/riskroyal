@@ -148,6 +148,13 @@ func set_color(index: int) -> void:
 		receive_set_color(local_peer_id, index)
 	# TODO(plan-c): non-host case routes via rpc.request_set_color(index) to host
 
+func set_name(value: String) -> void:
+	if is_host:
+		var slot = _find_slot(local_peer_id)
+		if slot != null:
+			receive_player_info(local_peer_id, value, slot.color_index)
+	# TODO(plan-e): joiner case routes via rpc.request_set_name(value) to host
+
 func receive_set_ready(peer_id: int, value: bool) -> bool:
 	if state != NetSessionState.State.LOBBY:
 		return false
