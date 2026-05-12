@@ -14,8 +14,8 @@ var rng_seed: int = 0
 var rng: RandomNumberGenerator = null
 var pending_wagers: Dictionary = {}
 var bounties: Array = []
-var current_shop_offer: Array = []
-var shop_done_peers: Array = []
+var current_shop_offer: Array = []   # Array of card_id strings — scalars only
+var shop_done_peers: Array = []      # Array of peer_id ints — scalars only
 var event_modifiers: Dictionary = {}
 var pending_card_effects: Array = []
 

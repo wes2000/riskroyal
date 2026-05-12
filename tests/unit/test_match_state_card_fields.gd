@@ -37,3 +37,6 @@ func test_round_trip_preserves_new_fields():
 	assert_eq(s2.shop_done_peers, [1, 2])
 	assert_eq(s2.event_modifiers.get(1, {}).get("insurance_pre", false), true)
 	assert_eq(s2.pending_card_effects.size(), 1)
+	assert_eq(s2.pending_card_effects[0].get("type", ""), "wager_tax")
+	assert_eq(s2.pending_card_effects[0].get("source", 0), 1)
+	assert_eq(s2.pending_card_effects[0].get("target", 0), 2)
