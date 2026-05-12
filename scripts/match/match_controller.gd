@@ -108,9 +108,30 @@ func start_match(match_start) -> void:
 	state.event_index = 0
 	_set_phase(MatchPhase.Phase.HOUSE_REVEAL)
 
+func _send_rpc(method_name: String, args: Array = []) -> void:
+	# Internal RPC sender. Routes through _multiplayer_node.rpc when non-null;
+	# no-ops in unit tests where _multiplayer_node is null.
+	if _multiplayer_node == null:
+		return
+	match args.size():
+		0: _multiplayer_node.rpc(method_name)
+		1: _multiplayer_node.rpc(method_name, args[0])
+		2: _multiplayer_node.rpc(method_name, args[0], args[1])
+		3: _multiplayer_node.rpc(method_name, args[0], args[1], args[2])
+		_:
+			push_error("MatchController._send_rpc: unsupported arity %d" % args.size())
+
+func _phase_change_context() -> Dictionary:
+	return {
+		"event_index": state.event_index,
+		"current_event_id": state.current_event_id,
+	}
+
 func _set_phase(new_phase: int) -> void:
 	state.phase = new_phase
 	phase_changed.emit(new_phase)
+	if is_host:
+		_send_rpc("_rpc_phase_changed", [new_phase, _phase_change_context()])
 	_enter_phase_behavior()
 
 # Called on host when entering a phase to execute MVP behavior.
@@ -153,13 +174,17 @@ func _enter_phase_behavior() -> void:
 
 func _process_ante_phase() -> void:
 	var ante = MatchConfig.ANTE_BY_EVENT_INDEX[state.event_index]
+	var deltas: Array = []
 	for p in state.players:
 		if p.chips >= ante:
 			p.chips -= ante
 			p.is_active_this_event = true
 			player_resources_changed.emit(p.peer_id)
+			deltas.append({"peer_id": p.peer_id, "chip_delta": -ante, "crown_delta": 0, "heat_delta": 0})
 		else:
 			p.is_active_this_event = false
+	if deltas.size() > 0 and is_host:
+		_send_rpc("_rpc_apply_deltas", [deltas])
 
 func _process_event_selection() -> void:
 	var pool = MatchConfig.EVENT_POOL
@@ -300,6 +325,8 @@ func _process_resolution_phase() -> void:
 
 func _emit_resolution_step(step_name: String, payload: Dictionary) -> void:
 	resolution_step.emit(step_name, payload)
+	if is_host:
+		_send_rpc("_rpc_resolution_step", [step_name, payload])
 
 func _build_busts_payload(result) -> Dictionary:
 	var bust_ids: Array = []
@@ -317,6 +344,7 @@ func _build_cash_outs_payload(result) -> Dictionary:
 
 func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
 	var deltas: Array = []
+	var broadcast_deltas: Array = []
 	for pid in result.per_player.keys():
 		var d = int(result.per_player[pid].get(delta_key, 0))
 		if d == 0:
@@ -327,16 +355,21 @@ func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
 		match delta_key:
 			"chip_delta":
 				p.chips += d
+				broadcast_deltas.append({"peer_id": pid, "chip_delta": d, "crown_delta": 0, "heat_delta": 0})
 			"crown_delta":
 				p.crowns += d
+				broadcast_deltas.append({"peer_id": pid, "chip_delta": 0, "crown_delta": d, "heat_delta": 0})
 		deltas.append({"peer_id": pid, "delta": d})
 		player_resources_changed.emit(pid)
 	_emit_resolution_step(step_name, {"deltas": deltas})
+	if broadcast_deltas.size() > 0 and is_host:
+		_send_rpc("_rpc_apply_deltas", [broadcast_deltas])
 
 func _process_bounty_heat_update() -> void:
 	var result = state.current_result
 	if result == null:
 		return
+	var broadcast_deltas: Array = []
 	for pid in result.per_player.keys():
 		var d = result.heat_delta_for(pid)
 		if d == 0:
@@ -346,16 +379,28 @@ func _process_bounty_heat_update() -> void:
 			continue
 		p.heat = clamp(p.heat + d, 0, MatchConfig.HEAT_MAX)
 		player_resources_changed.emit(pid)
+		broadcast_deltas.append({"peer_id": pid, "chip_delta": 0, "crown_delta": 0, "heat_delta": d})
+	if broadcast_deltas.size() > 0 and is_host:
+		_send_rpc("_rpc_apply_deltas", [broadcast_deltas])
 
 func _process_match_end() -> void:
-	var rankings: Array = []
-	for p in state.players:
-		rankings.append(p)
+	var rankings = state.players.duplicate()
 	rankings.sort_custom(func(a, b):
-		if a.crowns != b.crowns:
-			return a.crowns > b.crowns
-		if a.chips != b.chips:
-			return a.chips > b.chips
+		if a.crowns != b.crowns: return a.crowns > b.crowns
+		if a.chips != b.chips: return a.chips > b.chips
 		return a.heat > b.heat
 	)
 	match_ended.emit(rankings)
+	if is_host:
+		var serialized: Array = []
+		for p in rankings:
+			serialized.append(p.to_dict())
+		_send_rpc("_rpc_match_ended", [serialized])
+
+# Host-only: signals all peers to leave the match scene. Called by
+# MatchEndOverlay's Back-to-Lobby button. NetSession.return_to_lobby
+# (from Plan A Task 6) is called separately by MatchScene.
+func return_to_lobby() -> void:
+	if not is_host:
+		return
+	_send_rpc("_rpc_return_to_lobby", [])
