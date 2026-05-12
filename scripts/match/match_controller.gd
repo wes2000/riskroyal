@@ -362,6 +362,8 @@ func _build_event_context():
 		var ante = MatchConfig.ANTE_BY_EVENT_INDEX[state.event_index]
 		for p in ctx.players:
 			ctx.wagers[p.peer_id] = ante
+	# Thread event_modifiers into the context so card effects + event runtime can read them.
+	ctx.event_modifiers = state.event_modifiers.duplicate(true)
 	return ctx
 
 func _on_event_complete(result) -> void:

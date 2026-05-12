@@ -200,12 +200,19 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 	var winner_peer_id = 0
 	var winner_name = ""
 	var winner_cash_out = -1.0
+	var modifiers = {}
+	if context != null and "event_modifiers" in context:
+		modifiers = context.event_modifiers
 	for player in context.players:
 		var pid = player.peer_id
 		var wager = int(context.wagers.get(pid, 0))
+		var p_mods = modifiers.get(pid, {})
 		if busted.has(pid):
+			var bust_loss = wager
+			if p_mods.get("insurance_pre", false):
+				bust_loss = int(wager / 2)  # Insurance halves bust penalty
 			result.per_player[pid] = {
-				"chip_delta": -wager,
+				"chip_delta": -bust_loss,
 				"crown_delta": 0,
 				"heat_delta": 0,
 				"bust": true,
@@ -213,11 +220,25 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 			}
 			summary.append({
 				"peer_id": pid, "name": player.name, "cash_out_at": 0.0,
-				"chip_delta": -wager, "busted": true, "wager": wager,
+				"chip_delta": -bust_loss, "busted": true, "wager": wager,
 			})
 		else:
 			var cash_out_at = float(cash_outs.get(pid, 0.0))
 			var chip_delta = int(wager * cash_out_at)
+			# Wager multiplier (Multiplier Booster)
+			var wm = float(p_mods.get("wager_multiplier", 1.0))
+			if wm != 1.0:
+				chip_delta = int(chip_delta * wm)
+			# Underdog multiplier
+			var um = float(p_mods.get("underdog_multiplier", 1.0))
+			if um != 1.0:
+				chip_delta = int(chip_delta * um)
+			# Late Cash bonus
+			if p_mods.get("late_cash_bonus", false):
+				var threshold = float(p_mods.get("late_cash_threshold", 5.0))
+				var bonus = int(p_mods.get("late_cash_bonus_chips", 200))
+				if cash_out_at > threshold:
+					chip_delta += bonus
 			result.per_player[pid] = {
 				"chip_delta": chip_delta,
 				"crown_delta": 0,
@@ -233,9 +254,14 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 				winner_cash_out = cash_out_at
 				winner_peer_id = pid
 				winner_name = player.name
-	# Award the Crown to the highest-cash-out survivor (if any survived).
+	# Award the Crown + heat_delta to the highest-cash-out survivor
 	if winner_peer_id != 0:
 		result.per_player[winner_peer_id]["crown_delta"] = 1
+		var winner_mods = modifiers.get(winner_peer_id, {})
+		var heat_delta = 1
+		if winner_mods.get("heat_shield", false):
+			heat_delta = int(heat_delta / 2)  # Heat Shield halves heat_delta (1 -> 0)
+		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
 	result.painful_reveal = {
 		"crash_at": crash_at,
 		"winner_peer_id": winner_peer_id,
