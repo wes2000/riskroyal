@@ -10,6 +10,7 @@ var event_index: int = 0
 var rng_seed: int = 0
 var wagers: Dictionary = {}
 var is_host: bool = false
+var event_modifiers: Dictionary = {}  # Per-peer-id pre-event card flags. Populated by MatchController._build_event_context from state.event_modifiers.
 
 func to_dict() -> Dictionary:
 	var player_dicts: Array = []
@@ -21,6 +22,7 @@ func to_dict() -> Dictionary:
 		"rng_seed": rng_seed,
 		"wagers": wagers,
 		"is_host": is_host,
+		"event_modifiers": event_modifiers.duplicate(true),
 	}
 
 static func from_dict(d: Dictionary) -> RefCounted:
@@ -29,6 +31,7 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	c.rng_seed = d.get("rng_seed", 0)
 	c.wagers = d.get("wagers", {})
 	c.is_host = d.get("is_host", false)
+	c.event_modifiers = d.get("event_modifiers", {}).duplicate(true)
 	c.players = []
 	for raw in d.get("players", []):
 		c.players.append(MatchPlayer.from_dict(raw))
