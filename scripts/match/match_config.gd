@@ -44,3 +44,14 @@ const ROCKET_GROWTH_RATE: float = 0.06
 
 static func starting_chips_for_player_count(count: int) -> int:
 	return STARTING_CHIPS_BY_PLAYER_COUNT.get(count, 500)
+
+# Sub-project #4 (Power Cards & Bounties)
+const SHOP_TIMEOUT_SEC: int = 10
+const MAX_HAND_SIZE: int = 5
+const MAX_LOADOUT_SIZE: int = 2
+const STARTER_PACK_SIZE: int = 3
+const SHOP_OFFER_SIZE: int = 3
+const CARD_COST_COMMON: int = 50
+const CARD_COST_RARE: int = 150
+const CARD_COST_ROYAL: int = 400
+const BOUNTY_BASE_REWARD: int = 150

@@ -11,6 +11,9 @@ var chips: int = 0
 var crowns: int = 0
 var heat: int = 0
 var is_active_this_event: bool = true
+var hand: Array = []
+var loadout: Array = []
+var played_this_event: Array = []
 
 func to_dict() -> Dictionary:
 	return {
@@ -22,6 +25,9 @@ func to_dict() -> Dictionary:
 		"crowns": crowns,
 		"heat": heat,
 		"is_active_this_event": is_active_this_event,
+		"hand": hand.duplicate(),
+		"loadout": loadout.duplicate(),
+		"played_this_event": played_this_event.duplicate(),
 	}
 
 static func from_dict(d: Dictionary) -> RefCounted:
@@ -34,4 +40,7 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	p.crowns = d.get("crowns", 0)
 	p.heat = d.get("heat", 0)
 	p.is_active_this_event = d.get("is_active_this_event", true)
+	p.hand = d.get("hand", []).duplicate()
+	p.loadout = d.get("loadout", []).duplicate()
+	p.played_this_event = d.get("played_this_event", []).duplicate()
 	return p
