@@ -6,6 +6,7 @@ const MatchConfig = preload("res://scripts/match/match_config.gd")
 const EventResult = preload("res://scripts/events/event_result.gd")
 const MatchStart = preload("res://scripts/data/match_start.gd")
 const PlayerSlot = preload("res://scripts/data/player_slot.gd")
+const MockEvent = preload("res://tests/fakes/mock_event.gd")
 
 func _build_match_start(player_count: int) -> RefCounted:
 	var ms = MatchStart.new()
@@ -18,7 +19,18 @@ func _build_match_start(player_count: int) -> RefCounted:
 
 func _new_controller() -> MatchController:
 	var c = MatchController.new(true, null)
+	# Inject blocking mock so start_match's cascade stops at MAIN_EVENT.
+	# Reset heat/crown/chip state so tests begin from a clean baseline.
+	var mock = MockEvent.new()
+	c._event_factory = func(_path): return mock
 	c.start_match(_build_match_start(3))
+	var starting_chips = MatchConfig.starting_chips_for_player_count(3)
+	for p in c.state.players:
+		p.chips = starting_chips
+		p.heat = 0
+		p.crowns = 0
+		p.is_active_this_event = true
+	c.state.event_index = 0
 	return c
 
 func test_bounty_heat_applies_heat_deltas():

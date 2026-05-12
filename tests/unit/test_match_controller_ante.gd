@@ -5,6 +5,7 @@ const MatchPhase = preload("res://scripts/match/match_phase.gd")
 const MatchConfig = preload("res://scripts/match/match_config.gd")
 const MatchStart = preload("res://scripts/data/match_start.gd")
 const PlayerSlot = preload("res://scripts/data/player_slot.gd")
+const MockEvent = preload("res://tests/fakes/mock_event.gd")
 
 func _build_match_start(player_count: int) -> RefCounted:
 	var ms = MatchStart.new()
@@ -20,7 +21,18 @@ func _build_match_start(player_count: int) -> RefCounted:
 
 func _new_controller(player_count: int = 2) -> MatchController:
 	var c = MatchController.new(true, null)
+	# Inject a blocking mock so start_match's cascade stops at MAIN_EVENT
+	# without completing the event. Reset chip state after the cascade runs.
+	var mock = MockEvent.new()
+	c._event_factory = func(_path): return mock
 	c.start_match(_build_match_start(player_count))
+	# The cascade ran ANTE during start_match; restore initial chip state so
+	# ante tests begin from a clean baseline.
+	var starting_chips = MatchConfig.starting_chips_for_player_count(player_count)
+	for p in c.state.players:
+		p.chips = starting_chips
+		p.is_active_this_event = true
+	c.state.event_index = 0
 	return c
 
 func test_ante_deducts_chips_for_event_0():

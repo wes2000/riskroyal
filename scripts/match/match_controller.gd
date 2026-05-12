@@ -81,22 +81,39 @@ func _set_phase(new_phase: int) -> void:
 	phase_changed.emit(new_phase)
 	_enter_phase_behavior()
 
-# Called on host when entering a phase to execute MVP behavior. Phases not
-# covered here are no-ops (handled by _advance_phase chaining alone).
+# Called on host when entering a phase to execute MVP behavior.
+# Async: no-op phases call _schedule_advance to auto-advance the machine.
+# _set_phase calls this without await; the coroutine runs detached and the
+# phase change still happens synchronously. Plan A tests that call this
+# without await continue to work (GDScript runs unwaited coroutines detached).
 func _enter_phase_behavior() -> void:
 	if not is_host:
 		return
 	match state.phase:
+		MatchPhase.Phase.HOUSE_REVEAL:
+			await _schedule_advance()
 		MatchPhase.Phase.ANTE:
 			_process_ante_phase()
+			await _schedule_advance()
 		MatchPhase.Phase.EVENT_SELECTION:
 			_process_event_selection()
+			await _schedule_advance()
+		MatchPhase.Phase.BET_LOADOUT:
+			await _schedule_advance()
 		MatchPhase.Phase.MAIN_EVENT:
 			_process_main_event()
+			# MAIN_EVENT does NOT _schedule_advance; the event drives the
+			# transition via event_complete or watchdog timeout.
 		MatchPhase.Phase.RESOLUTION:
-			_process_resolution_phase()
+			await _process_resolution_phase()
+			# RESOLUTION pipeline calls _advance_phase at its end (existing).
 		MatchPhase.Phase.BOUNTY_HEAT_UPDATE:
 			_process_bounty_heat_update()
+			await _schedule_advance()
+		MatchPhase.Phase.SHOP:
+			await _schedule_advance()
+		MatchPhase.Phase.HOUSE_TWIST:
+			await _schedule_advance()
 		MatchPhase.Phase.MATCH_END:
 			_process_match_end()
 		_:

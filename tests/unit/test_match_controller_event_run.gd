@@ -22,6 +22,16 @@ func _new_controller_with_mock() -> Dictionary:
 	# Inject the factory so MatchController uses the mock instead of loading a scene.
 	c._event_factory = func(_path): return mock
 	c.start_match(_build_match_start(2))
+	# start_match cascades into MAIN_EVENT via the scheduler; the mock._run
+	# was called once and event_complete was connected. Reset so each test
+	# starts from a clean state: no stale event node or run_call entries.
+	if c._current_event_node != null and is_instance_valid(c._current_event_node):
+		c._current_event_node.queue_free()
+	c._current_event_node = null
+	var on_complete = Callable(c, "_on_event_complete")
+	if mock.event_complete.is_connected(on_complete):
+		mock.event_complete.disconnect(on_complete)
+	mock.run_calls.clear()
 	return {"controller": c, "mock": mock}
 
 func test_event_selection_picks_from_pool():
@@ -49,15 +59,17 @@ func test_event_complete_stores_result_and_advances_past_main_event():
 	var mock = d.mock
 	c.state.current_event_id = "res://scripts/events/test_event/test_event.tscn"
 	c.state.phase = MatchPhase.Phase.MAIN_EVENT
+	# Set event_index to final slot so the post-RESOLUTION cascade terminates
+	# at MATCH_END rather than looping back to MAIN_EVENT.
+	c.state.event_index = 4
 	c._enter_phase_behavior()
 	# Now drive event completion.
 	var result = EventResult.new()
 	result.event_id = "mock_event"
 	mock.emit_complete(result)
-	# In Task 10, RESOLUTION is still a no-op so phase == RESOLUTION.
-	# In Task 11+, the RESOLUTION pipeline runs synchronously and chains
-	# through to BOUNTY_HEAT_UPDATE; assert forward-compatibly that phase
-	# left MAIN_EVENT and that current_result was stored.
+	# RESOLUTION pipeline runs, cascades through BOUNTY_HEAT_UPDATE -> SHOP ->
+	# HOUSE_TWIST (final) -> MATCH_END. current_result was stored by
+	# _on_event_complete; assert it's still the mock result.
 	assert_ne(c.state.phase, MatchPhase.Phase.MAIN_EVENT)
 	assert_eq(c.state.current_result, result)
 

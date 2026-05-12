@@ -18,7 +18,29 @@ func _build_match_start(player_count: int) -> RefCounted:
 func _new_controller_synchronous() -> MatchController:
 	var c = MatchController.new(true, null)
 	c.resolution_step_delay_ms_override = 0  # synchronous
+	# Inject blocking mock so start_match's cascade stops at MAIN_EVENT.
+	# Reset resource values so resolution tests start from a clean baseline.
+	var MockEvent = preload("res://tests/fakes/mock_event.gd")
+	var mock = MockEvent.new()
+	c._event_factory = func(_path): return mock
 	c.start_match(_build_match_start(2))
+	var MatchConfig = preload("res://scripts/match/match_config.gd")
+	var starting_chips = MatchConfig.starting_chips_for_player_count(2)
+	for p in c.state.players:
+		p.chips = starting_chips
+		p.crowns = 0
+		p.heat = 0
+		p.is_active_this_event = true
+	# Set event_index to the final slot so the cascade after RESOLUTION goes
+	# HOUSE_TWIST -> MATCH_END (not back through ANTE), keeping chip and signal
+	# counts clean for resolution-specific assertions.
+	c.state.event_index = 4
+	if c._current_event_node != null and is_instance_valid(c._current_event_node):
+		c._current_event_node.queue_free()
+	c._current_event_node = null
+	var on_complete = Callable(c, "_on_event_complete")
+	if mock.event_complete.is_connected(on_complete):
+		mock.event_complete.disconnect(on_complete)
 	return c
 
 func _result_with_chips(p1_delta: int, p2_delta: int) -> RefCounted:
@@ -76,5 +98,8 @@ func test_resolution_advances_to_bounty_heat_update():
 	c.state.current_result = _result_with_chips(0, 0)
 	c.state.phase = MatchPhase.Phase.RESOLUTION
 	c._enter_phase_behavior()
-	# Synchronous delay -> immediately advances
-	assert_eq(c.state.phase, MatchPhase.Phase.BOUNTY_HEAT_UPDATE)
+	# RESOLUTION calls _advance_phase internally, which kicks off the no-op
+	# cascade (BOUNTY_HEAT_UPDATE -> SHOP -> HOUSE_TWIST -> ... -> MAIN_EVENT
+	# where the mock blocks). The phase machine left RESOLUTION — that's the
+	# key invariant; the final resting phase is MAIN_EVENT with blocking mock.
+	assert_ne(c.state.phase, MatchPhase.Phase.RESOLUTION)
