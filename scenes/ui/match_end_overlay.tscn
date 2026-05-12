@@ -1,0 +1,22 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/match_end_overlay.gd" id="1"]
+
+[node name="MatchEndOverlay" type="PanelContainer"]
+script = ExtResource("1")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+
+[node name="Title" type="Label" parent="VBox"]
+text = "Match End"
+
+[node name="RankingsLabel" type="Label" parent="VBox"]
+text = ""
+
+[node name="Buttons" type="HBoxContainer" parent="VBox"]
+
+[node name="BackToLobbyButton" type="Button" parent="VBox/Buttons"]
+text = "Back to Lobby"
+
+[node name="QuitButton" type="Button" parent="VBox/Buttons"]
+text = "Quit"
