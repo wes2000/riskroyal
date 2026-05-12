@@ -67,3 +67,55 @@ func test_on_ready_toggled_calls_set_ready():
 	lobby._on_ready_toggled(true)
 	var slot = session.players[0]
 	assert_true(slot.ready)
+
+func test_start_button_visible_only_for_host():
+	var session = _make_session()
+	# session.is_host == true after host_session()
+	assert_true(Lobby.should_show_start_button(session))
+
+func test_start_button_hidden_for_joiner():
+	var t = FakeTransport.new()
+	var s = FakeSignalingClient.new()
+	var joiner = NetSession.new(t, s)
+	joiner.join_session("ABC234")
+	assert_false(Lobby.should_show_start_button(joiner))
+
+func test_start_button_enabled_only_when_all_ready_and_2_plus_players():
+	var session = _make_session()
+	# Just host, not ready
+	assert_false(Lobby.is_start_button_enabled(session))
+	# Add a joiner
+	session._transport.emit_peer_joined(2)
+	session.receive_player_info(2, "Maya", 3)
+	assert_false(Lobby.is_start_button_enabled(session))  # nobody ready
+	session.receive_set_ready(1, true)
+	session.receive_set_ready(2, true)
+	assert_true(Lobby.is_start_button_enabled(session))
+
+func test_on_start_pressed_calls_start_match():
+	var session = _make_session()
+	session._transport.emit_peer_joined(2)
+	session.receive_player_info(2, "Maya", 3)
+	session.receive_set_ready(1, true)
+	session.receive_set_ready(2, true)
+	var lobby = Lobby.new()
+	lobby.session = session
+	var emitted = [null]
+	session.match_starting.connect(func(ms): emitted[0] = ms)
+	lobby._on_start_pressed()
+	assert_not_null(emitted[0])
+
+func test_on_kick_pressed_calls_kick():
+	var session = _make_session()
+	session._transport.emit_peer_joined(2)
+	session.receive_player_info(2, "Maya", 3)
+	var lobby = Lobby.new()
+	lobby.session = session
+	lobby._on_kick_pressed(2)
+	assert_null(_find_slot(session, 2))
+
+func _find_slot(session, peer_id: int):
+	for s in session.players:
+		if s.peer_id == peer_id:
+			return s
+	return null
