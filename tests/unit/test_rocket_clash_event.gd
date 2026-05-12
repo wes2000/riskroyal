@@ -68,3 +68,47 @@ func test_force_crash_at_override_falls_back_to_rng():
 	e._run(_build_context(2, true))
 	assert_true(e._crash_at >= 1.0)
 	assert_true(e._crash_at <= 100.0)
+
+func test_cash_out_within_tolerance_accepted():
+	var d = _new_host_event()
+	var e = d.event
+	e._force_crash_at_override = 5.0
+	e._run(_build_context(2, true))
+	e._force_current_mult_for_testing = 2.0
+	e._rpc_cash_out_requested(2, 2.01)  # within 0.05 tolerance
+	var confirmed = false
+	for call in d.fake.rpc_calls:
+		if call.method == "_rpc_cash_out_confirmed":
+			confirmed = true
+			assert_eq(call.args[0], 2, "confirmed peer_id")
+			assert_almost_eq(float(call.args[1]), 2.0, 0.001, "host's authoritative mult")
+			break
+	assert_true(confirmed)
+	assert_true(e._cash_outs.has(2))
+
+func test_cash_out_out_of_tolerance_rejected():
+	var d = _new_host_event()
+	var e = d.event
+	e._force_crash_at_override = 5.0
+	e._run(_build_context(2, true))
+	e._force_current_mult_for_testing = 2.0
+	e._rpc_cash_out_requested(2, 2.50)  # >0.05 off
+	var rejected = false
+	for call in d.fake.rpc_calls:
+		if call.method == "_rpc_cash_out_rejected":
+			rejected = true
+			assert_eq(call.args[0], 2)
+			break
+	assert_true(rejected)
+	assert_false(e._cash_outs.has(2))
+
+func test_double_cash_out_silently_dropped():
+	var d = _new_host_event()
+	var e = d.event
+	e._force_crash_at_override = 5.0
+	e._run(_build_context(2, true))
+	e._force_current_mult_for_testing = 2.0
+	e._rpc_cash_out_requested(2, 2.0)  # first: accepted
+	var first_count = d.fake.rpc_calls.size()
+	e._rpc_cash_out_requested(2, 2.0)  # second: silently dropped
+	assert_eq(d.fake.rpc_calls.size(), first_count, "duplicate cash-out silently dropped")

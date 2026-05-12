@@ -119,6 +119,55 @@ static func multiplier_at(elapsed_ms: int, growth_rate: float) -> float:
 	var elapsed_sec = float(elapsed_ms) / 1000.0
 	return exp(growth_rate * elapsed_sec)
 
+# Test seam: force a specific "current multiplier" for cash-out validation
+# tests instead of computing from elapsed time. Negative = use real elapsed.
+var _force_current_mult_for_testing: float = -1.0
+
+func _current_multiplier_host() -> float:
+	if _force_current_mult_for_testing >= 0.0:
+		return _force_current_mult_for_testing
+	var elapsed_ms = Time.get_ticks_msec() - _start_time_ms
+	var growth = _growth_rate_override if _growth_rate_override >= 0.0 else MatchConfig.ROCKET_GROWTH_RATE
+	return multiplier_at(elapsed_ms, growth)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_cash_out_requested(peer_id: int, snapshot_mult: float) -> void:
+	if not _is_host:
+		return  # only host validates
+	if _finished:
+		# Crash already fired; this cash-out arrived too late.
+		_send_rpc_to_peer(peer_id, "_rpc_cash_out_rejected", [peer_id])
+		return
+	if _cash_outs.has(peer_id):
+		# Double-click; silently drop.
+		return
+	var host_mult = _current_multiplier_host()
+	if abs(snapshot_mult - host_mult) > CASH_OUT_TOLERANCE:
+		_send_rpc_to_peer(peer_id, "_rpc_cash_out_rejected", [peer_id])
+		return
+	_cash_outs[peer_id] = host_mult
+	_send_rpc("_rpc_cash_out_confirmed", [peer_id, host_mult])
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_cash_out_confirmed(peer_id: int, accepted_mult: float) -> void:
+	# Mirrored to all peers for HUD update. Host already updated _cash_outs.
+	if not _is_host:
+		_cash_outs[peer_id] = accepted_mult
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_cash_out_rejected(_peer_id: int) -> void:
+	# Local UI hook only; data already correct on host.
+	pass
+
+# Targeted send (for rejecting back to the originator only).
+func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array) -> void:
+	if _multiplayer_node == null:
+		return
+	match args.size():
+		0: _multiplayer_node.rpc_id(peer_id, method_name)
+		1: _multiplayer_node.rpc_id(peer_id, method_name, args[0])
+		2: _multiplayer_node.rpc_id(peer_id, method_name, args[0], args[1])
+
 const EventResult = preload("res://scripts/events/event_result.gd")
 
 # Builds the EventResult per spec section 6.1. Survivors:
