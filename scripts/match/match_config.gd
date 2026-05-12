@@ -30,5 +30,17 @@ const EVENT_TIMEOUT_SEC: int = 120
 # than blurring past in one frame.
 const NO_OP_PHASE_DELAY_MS: int = 300
 
+# BET_LOADOUT phase timeout. Sub-project #3 upgrades BET_LOADOUT from a
+# no-op pass-through to a real phase with wager input.
+const BET_LOADOUT_TIMEOUT_SEC: int = 15
+
+# Rocket Clash: max extra wager = player.chips × this factor. 1.0 means
+# a player can wager up to their full chip stack on top of the ante.
+const ROCKET_CLASH_MAX_WAGER_FACTOR: float = 1.0
+
+# Rocket Clash: multiplier(t) = exp(ROCKET_GROWTH_RATE × elapsed_sec).
+# 0.06/sec gives 2x at ~12s, 5x at ~27s, 10x at ~38s. Tunable.
+const ROCKET_GROWTH_RATE: float = 0.06
+
 static func starting_chips_for_player_count(count: int) -> int:
 	return STARTING_CHIPS_BY_PLAYER_COUNT.get(count, 500)
