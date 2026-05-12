@@ -30,6 +30,10 @@ var resolution_step_delay_ms_override: int = -1
 var _event_factory: Callable
 var _current_event_node = null
 
+# Pause/resume gate for the state machine. Wired to NetSession.state_changed(PAUSED)
+# in Plan B to freeze progression when a peer disconnects.
+var _paused: bool = false
+
 func _default_event_factory(path: String):
 	var ps = load(path)
 	if ps == null:
@@ -41,6 +45,12 @@ func _init(p_is_host: bool = false, multiplayer_node = null) -> void:
 	_multiplayer_node = multiplayer_node
 	state = MatchState.new()
 	_event_factory = Callable(self, "_default_event_factory")
+
+func pause() -> void:
+	_paused = true
+
+func resume() -> void:
+	_paused = false
 
 func start_match(match_start) -> void:
 	if not is_host:
@@ -137,10 +147,25 @@ func _on_event_complete(result) -> void:
 		_current_event_node = null
 	_advance_phase()
 
+func _on_event_timeout() -> void:
+	if _current_event_node == null:
+		return
+	var empty = preload("res://scripts/events/event_result.gd").new()
+	# Build all-zero deltas for active players
+	for p in state.players:
+		if p.is_active_this_event:
+			empty.per_player[p.peer_id] = {"chip_delta": 0, "crown_delta": 0, "heat_delta": 0, "bust": true, "cash_out_at": 0.0}
+	state.current_result = empty
+	_current_event_node.queue_free()
+	_current_event_node = null
+	_advance_phase()
+
 # Internal: advance the phase machine. Each phase decides what to do next.
 # Real phase behavior (ANTE deduction, EVENT_SELECTION pick, MAIN_EVENT run,
 # RESOLUTION pipeline) is filled in by Tasks 9-12.
 func _advance_phase() -> void:
+	if _paused:
+		return
 	var next_phase: int
 	match state.phase:
 		MatchPhase.Phase.HOUSE_REVEAL:
