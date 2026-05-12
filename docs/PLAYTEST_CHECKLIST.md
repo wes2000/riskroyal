@@ -55,3 +55,19 @@ Run by launching two `godot --path .` windows on this machine; click Host in one
 | 6 | Match ends correctly; rankings displayed | USER | After event 5, MatchEndOverlay shows ranked players. |
 | 7 | Back-to-Lobby returns all peers to Lobby scene | USER | Host clicks Back; both peers' scenes change to Lobby. |
 | 8 | Quit returns the quitting peer to MainMenu | USER | Anyone clicks Quit; just that peer goes back to MainMenu; other peer stays in match (or shows host-disconnected message if host quit). |
+
+## Sub-project #3: Rocket Clash (Plan A)
+
+Plan reference: docs/superpowers/specs/2026-05-12-rocket-clash-event-design.md §9.6
+Implemented: 2026-05-12
+
+Run by launching two `godot --path .` windows on this machine.
+
+| # | Scenario | Status | Notes |
+|---|----------|--------|-------|
+| 1 | Wager + rocket end-to-end | USER | Two windows; both wager; both cash out at different multipliers; both see consistent rankings. |
+| 2 | Bust event | USER | Both hold past crash; both lose wager; no Crown awarded that event. |
+| 3 | Solo survivor | USER | One cashes early, one busts; survivor gets Crown. |
+| 4 | Wager defaults to 0 on timeout | USER | One player ignores BET_LOADOUT; verify their event still runs with wager=0. |
+| 5 | Cash-out near crash | USER | Cash out within 0.1x of expected crash; verify host accepts within tolerance band. |
+| 6 | Five-event match with mixed wagers | USER | Full Quick Clash; chips and Heat update correctly across all 5 events; final rankings sensible. |
