@@ -7,6 +7,7 @@ const MatchPhase = preload("res://scripts/match/match_phase.gd")
 const MatchPlayer = preload("res://scripts/match/match_player.gd")
 const MatchState = preload("res://scripts/match/match_state.gd")
 const MatchConfig = preload("res://scripts/match/match_config.gd")
+const EventContext = preload("res://scripts/events/event_context.gd")
 
 signal phase_changed(new_phase: int)
 signal event_starting(event_id: String, event_index: int)
@@ -18,10 +19,23 @@ var state: MatchState
 var is_host: bool = false
 var _multiplayer_node = null  # for RPC routing in production; null in unit tests
 
+# Factory injected by tests; production code uses _default_event_factory.
+# IMPORTANT: do NOT initialize at declaration — instance methods aren't
+# bindable at field-init time in GDScript 2.0. Assigned in _init instead.
+var _event_factory: Callable
+var _current_event_node = null
+
+func _default_event_factory(path: String):
+	var ps = load(path)
+	if ps == null:
+		return null
+	return ps.instantiate()
+
 func _init(p_is_host: bool = false, multiplayer_node = null) -> void:
 	is_host = p_is_host
 	_multiplayer_node = multiplayer_node
 	state = MatchState.new()
+	_event_factory = Callable(self, "_default_event_factory")
 
 func start_match(match_start) -> void:
 	if not is_host:
@@ -56,6 +70,10 @@ func _enter_phase_behavior() -> void:
 	match state.phase:
 		MatchPhase.Phase.ANTE:
 			_process_ante_phase()
+		MatchPhase.Phase.EVENT_SELECTION:
+			_process_event_selection()
+		MatchPhase.Phase.MAIN_EVENT:
+			_process_main_event()
 		_:
 			pass
 
@@ -68,6 +86,45 @@ func _process_ante_phase() -> void:
 			player_resources_changed.emit(p.peer_id)
 		else:
 			p.is_active_this_event = false
+
+func _process_event_selection() -> void:
+	var pool = MatchConfig.EVENT_POOL
+	var idx = state.rng.randi() % pool.size()
+	state.current_event_id = pool[idx]
+
+func _process_main_event() -> void:
+	if state.current_event_id.is_empty():
+		return
+	_current_event_node = _event_factory.call(state.current_event_id)
+	if _current_event_node == null:
+		# Load failed for a non-empty path; synthesize empty result and advance.
+		var empty_result = preload("res://scripts/events/event_result.gd").new()
+		state.current_result = empty_result
+		_advance_phase()
+		return
+	_current_event_node.event_complete.connect(_on_event_complete)
+	event_starting.emit(_current_event_node.get_event_id(), state.event_index)
+	var context = _build_event_context()
+	_current_event_node._run(context)
+
+func _build_event_context():
+	var ctx = EventContext.new()
+	for p in state.players:
+		if p.is_active_this_event:
+			ctx.players.append(p)
+	ctx.event_index = state.event_index
+	ctx.rng_seed = state.rng_seed ^ (state.event_index * 0x9E3779B9)
+	var ante = MatchConfig.ANTE_BY_EVENT_INDEX[state.event_index]
+	for p in ctx.players:
+		ctx.wagers[p.peer_id] = ante
+	return ctx
+
+func _on_event_complete(result) -> void:
+	state.current_result = result
+	if _current_event_node != null:
+		_current_event_node.queue_free()
+		_current_event_node = null
+	_advance_phase()
 
 # Internal: advance the phase machine. Each phase decides what to do next.
 # Real phase behavior (ANTE deduction, EVENT_SELECTION pick, MAIN_EVENT run,
