@@ -46,3 +46,35 @@ func start_match(match_start) -> void:
 func _set_phase(new_phase: int) -> void:
 	state.phase = new_phase
 	phase_changed.emit(new_phase)
+
+# Internal: advance the phase machine. Each phase decides what to do next.
+# Real phase behavior (ANTE deduction, EVENT_SELECTION pick, MAIN_EVENT run,
+# RESOLUTION pipeline) is filled in by Tasks 9-12.
+func _advance_phase() -> void:
+	var next_phase: int
+	match state.phase:
+		MatchPhase.Phase.HOUSE_REVEAL:
+			next_phase = MatchPhase.Phase.ANTE
+		MatchPhase.Phase.ANTE:
+			next_phase = MatchPhase.Phase.EVENT_SELECTION
+		MatchPhase.Phase.EVENT_SELECTION:
+			next_phase = MatchPhase.Phase.BET_LOADOUT
+		MatchPhase.Phase.BET_LOADOUT:
+			next_phase = MatchPhase.Phase.MAIN_EVENT
+		MatchPhase.Phase.MAIN_EVENT:
+			next_phase = MatchPhase.Phase.RESOLUTION
+		MatchPhase.Phase.RESOLUTION:
+			next_phase = MatchPhase.Phase.BOUNTY_HEAT_UPDATE
+		MatchPhase.Phase.BOUNTY_HEAT_UPDATE:
+			next_phase = MatchPhase.Phase.SHOP
+		MatchPhase.Phase.SHOP:
+			next_phase = MatchPhase.Phase.HOUSE_TWIST
+		MatchPhase.Phase.HOUSE_TWIST:
+			if state.event_index < MatchConfig.QUICK_CLASH_EVENT_COUNT - 1:
+				state.event_index += 1
+				next_phase = MatchPhase.Phase.HOUSE_REVEAL
+			else:
+				next_phase = MatchPhase.Phase.MATCH_END
+		_:
+			return  # MATCH_END or unknown: do nothing
+	_set_phase(next_phase)
