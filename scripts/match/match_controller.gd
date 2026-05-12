@@ -24,6 +24,10 @@ var _multiplayer_node = null  # for RPC routing in production; null in unit test
 # ignores it. Plan B wires this into a Timer-driven pacing path.
 var resolution_step_delay_ms_override: int = -1
 
+# Test seam: override no-op phase auto-advance delay. -1 = use MatchConfig
+# default. 0 = advance synchronously (no await). >0 = use this delay in ms.
+var no_op_phase_delay_ms_override: int = -1
+
 # Factory injected by tests; production code uses _default_event_factory.
 # IMPORTANT: do NOT initialize at declaration — instance methods aren't
 # bindable at field-init time in GDScript 2.0. Assigned in _init instead.
@@ -197,6 +201,21 @@ func _advance_phase() -> void:
 		_:
 			return  # MATCH_END or unknown: do nothing
 	_set_phase(next_phase)
+
+func _schedule_advance() -> void:
+	# Detached-controller test pattern (Plan A): when not in the scene tree
+	# there's no SceneTree to create timers from, so advance synchronously.
+	# This preserves the behavior of every Plan A unit test that constructs
+	# MatchController.new(true, null) without add_child_autofree.
+	if not is_inside_tree():
+		_advance_phase()
+		return
+	var delay_ms: int = no_op_phase_delay_ms_override
+	if delay_ms < 0:
+		delay_ms = MatchConfig.NO_OP_PHASE_DELAY_MS
+	if delay_ms > 0:
+		await get_tree().create_timer(delay_ms / 1000.0).timeout
+	_advance_phase()
 
 func _process_resolution_phase() -> void:
 	var result = state.current_result
