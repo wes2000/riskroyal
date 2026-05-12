@@ -39,7 +39,7 @@ func test_event_selection_picks_from_pool():
 	var c = d.controller
 	c.state.phase = MatchPhase.Phase.EVENT_SELECTION
 	c._enter_phase_behavior()
-	assert_eq(c.state.current_event_id, "res://scripts/events/test_event/test_event.tscn")
+	assert_eq(c.state.current_event_id, "res://scripts/events/rocket_clash/rocket_clash_event.tscn")
 
 func test_main_event_instantiates_via_factory_and_calls_run():
 	var d = _new_controller_with_mock()

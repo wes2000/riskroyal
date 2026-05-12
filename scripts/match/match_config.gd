@@ -16,7 +16,7 @@ const ANTE_BY_EVENT_INDEX: Array = [25, 25, 25, 50, 100]
 const HEAT_MAX: int = 10
 
 const EVENT_POOL: Array = [
-	"res://scripts/events/test_event/test_event.tscn",
+	"res://scripts/events/rocket_clash/rocket_clash_event.tscn",
 ]
 
 const QUICK_CLASH_EVENT_COUNT: int = 5

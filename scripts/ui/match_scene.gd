@@ -11,6 +11,7 @@ const MatchConfig = preload("res://scripts/match/match_config.gd")
 const PlayerPanelScene = preload("res://scenes/ui/player_panel.tscn")
 const ResolutionOverlayScene = preload("res://scenes/ui/resolution_overlay.tscn")
 const MatchEndOverlayScene = preload("res://scenes/ui/match_end_overlay.tscn")
+const BetLoadoutOverlayScene = preload("res://scenes/ui/bet_loadout_overlay.tscn")
 const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 
 @onready var _player_panels: HBoxContainer = $VBox/PlayerPanels if has_node("VBox/PlayerPanels") else null
@@ -18,11 +19,13 @@ const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 @onready var _event_slot: Container = $VBox/EventSlot if has_node("VBox/EventSlot") else null
 @onready var _resolution_slot: Container = $VBox/ResolutionSlot if has_node("VBox/ResolutionSlot") else null
 @onready var _match_end_slot: Container = $VBox/MatchEndSlot if has_node("VBox/MatchEndSlot") else null
+@onready var _bet_loadout_slot: Container = $VBox/BetLoadoutSlot if has_node("VBox/BetLoadoutSlot") else null
 @onready var _pause_overlay: PanelContainer = $PauseOverlay if has_node("PauseOverlay") else null
 
 var session  # NetSession-like
 var controller: MatchController = null
 var _current_event_scene: Node = null
+var _bet_loadout_overlay: Node = null
 
 func _ready() -> void:
 	if session == null and get_tree().root.has_node("NetSessionMain"):
@@ -40,6 +43,8 @@ func _ready() -> void:
 	controller.event_starting.connect(_on_event_starting)
 	controller.match_ended.connect(_on_match_ended)
 	controller.request_return_to_lobby.connect(_on_request_return_to_lobby)
+	controller.bet_loadout_started.connect(_on_bet_loadout_started)
+	controller.bet_loadout_finished.connect(_on_bet_loadout_finished)
 	session.state_changed.connect(_on_session_state_changed)
 	_build_player_panels(match_start)
 	_build_overlays()
@@ -124,6 +129,25 @@ func _on_request_return_to_lobby() -> void:
 func _on_quit_pressed() -> void:
 	session.leave_session()
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+func _on_bet_loadout_started(_active_peer_ids: Array, _max_per_player: int) -> void:
+	if _bet_loadout_slot == null or _bet_loadout_overlay != null:
+		return
+	_bet_loadout_overlay = BetLoadoutOverlayScene.instantiate()
+	_bet_loadout_overlay.controller = controller
+	_bet_loadout_overlay.local_player = _find_local_player()
+	_bet_loadout_slot.add_child(_bet_loadout_overlay)
+
+func _on_bet_loadout_finished() -> void:
+	if _bet_loadout_overlay != null:
+		_bet_loadout_overlay.queue_free()
+		_bet_loadout_overlay = null
+
+func _find_local_player():
+	if controller == null or controller.state == null:
+		return null
+	var my_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	return controller.state.find_player(my_id)
 
 # Static formatter (testable). Takes total_events as a parameter so the
 # caller chooses the count (production passes MatchConfig.QUICK_CLASH_EVENT_COUNT).

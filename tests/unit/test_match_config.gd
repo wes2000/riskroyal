@@ -14,8 +14,11 @@ func test_ante_schedule():
 func test_heat_max():
 	assert_eq(MatchConfig.HEAT_MAX, 10)
 
-func test_event_pool_contains_test_event():
-	assert_true(MatchConfig.EVENT_POOL.has("res://scripts/events/test_event/test_event.tscn"))
+func test_event_pool_contains_rocket_clash():
+	assert_true(MatchConfig.EVENT_POOL.has("res://scripts/events/rocket_clash/rocket_clash_event.tscn"))
+	# TestEvent stays in the codebase for unit tests (via _event_factory test
+	# seam), but is no longer in the production pool.
+	assert_false(MatchConfig.EVENT_POOL.has("res://scripts/events/test_event/test_event.tscn"))
 
 func test_quick_clash_event_count():
 	assert_eq(MatchConfig.QUICK_CLASH_EVENT_COUNT, 5)
