@@ -15,6 +15,8 @@ var session  # NetSession-like
 @onready var _color_picker: OptionButton = $VBoxContainer/LocalPanel/ColorPicker if has_node("VBoxContainer/LocalPanel/ColorPicker") else null
 @onready var _ready_check: CheckBox = $VBoxContainer/LocalPanel/ReadyCheck if has_node("VBoxContainer/LocalPanel/ReadyCheck") else null
 @onready var _start_button: Button = $VBoxContainer/HostControls/StartButton if has_node("VBoxContainer/HostControls/StartButton") else null
+@onready var _pause_overlay: PanelContainer = $PauseOverlay if has_node("PauseOverlay") else null
+@onready var _pause_label: Label = $PauseOverlay/VBox/PauseLabel if has_node("PauseOverlay/VBox/PauseLabel") else null
 
 func _ready() -> void:
 	if session == null:
@@ -64,8 +66,11 @@ func _refresh_host_controls() -> void:
 	_start_button.visible = should_show_start_button(session)
 	_start_button.disabled = not is_start_button_enabled(session)
 
-func _on_state_changed(_new_state: int) -> void:
-	pass  # filled in by Task 8 (pause overlay)
+func _on_state_changed(new_state: int) -> void:
+	if _pause_overlay != null:
+		_pause_overlay.visible = should_show_pause_overlay(new_state)
+		if _pause_label != null and _pause_overlay.visible:
+			_pause_label.text = format_pause_message(session.players)
 
 func _on_match_starting(_match_start) -> void:
 	get_tree().change_scene_to_file("res://scenes/placeholder_match.tscn")
@@ -99,6 +104,18 @@ static func is_start_button_enabled(session) -> bool:
 		if not p.ready:
 			return false
 	return true
+
+static func should_show_pause_overlay(state: int) -> bool:
+	return state == NetSessionState.State.PAUSED
+
+static func format_pause_message(players: Array) -> String:
+	var disconnected: Array = []
+	for p in players:
+		if not p.connected:
+			disconnected.append(p.name)
+	if disconnected.is_empty():
+		return "Session paused..."
+	return "Paused - waiting for %s (30s)..." % ", ".join(disconnected)
 
 static func format_slot_label(slot) -> String:
 	if slot == null:

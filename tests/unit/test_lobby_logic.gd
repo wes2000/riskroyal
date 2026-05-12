@@ -119,3 +119,24 @@ func _find_slot(session, peer_id: int):
 		if s.peer_id == peer_id:
 			return s
 	return null
+
+func test_pause_overlay_hidden_in_lobby_state():
+	var session = _make_session()
+	assert_false(Lobby.should_show_pause_overlay(session.state))
+
+func test_pause_overlay_shown_in_paused_state():
+	assert_true(Lobby.should_show_pause_overlay(3))  # NetSessionState.State.PAUSED == 3
+
+func test_format_pause_message_lists_disconnected_player():
+	var s1 = PlayerSlot.new()
+	s1.name = "Host"; s1.connected = true
+	var s2 = PlayerSlot.new()
+	s2.name = "Maya"; s2.connected = false
+	var msg = Lobby.format_pause_message([s1, s2])
+	assert_true("Maya" in msg)
+
+func test_format_pause_message_handles_no_disconnected():
+	var s1 = PlayerSlot.new()
+	s1.name = "Host"; s1.connected = true
+	var msg = Lobby.format_pause_message([s1])
+	assert_true("paused" in msg.to_lower())
