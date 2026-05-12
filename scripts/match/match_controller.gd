@@ -81,6 +81,10 @@ func _enter_phase_behavior() -> void:
 			_process_main_event()
 		MatchPhase.Phase.RESOLUTION:
 			_process_resolution_phase()
+		MatchPhase.Phase.BOUNTY_HEAT_UPDATE:
+			_process_bounty_heat_update()
+		MatchPhase.Phase.MATCH_END:
+			_process_match_end()
 		_:
 			pass
 
@@ -212,3 +216,30 @@ func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
 		deltas.append({"peer_id": pid, "delta": d})
 		player_resources_changed.emit(pid)
 	_emit_resolution_step(step_name, {"deltas": deltas})
+
+func _process_bounty_heat_update() -> void:
+	var result = state.current_result
+	if result == null:
+		return
+	for pid in result.per_player.keys():
+		var d = result.heat_delta_for(pid)
+		if d == 0:
+			continue
+		var p = state.find_player(pid)
+		if p == null:
+			continue
+		p.heat = clamp(p.heat + d, 0, MatchConfig.HEAT_MAX)
+		player_resources_changed.emit(pid)
+
+func _process_match_end() -> void:
+	var rankings: Array = []
+	for p in state.players:
+		rankings.append(p)
+	rankings.sort_custom(func(a, b):
+		if a.crowns != b.crowns:
+			return a.crowns > b.crowns
+		if a.chips != b.chips:
+			return a.chips > b.chips
+		return a.heat > b.heat
+	)
+	match_ended.emit(rankings)
