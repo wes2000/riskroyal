@@ -92,6 +92,14 @@ func resume() -> void:
 func start_match(match_start) -> void:
 	if not is_host:
 		return
+	# C1 self-wire: route RPCs via this controller's own self.rpc()
+	# since the @rpc receiver methods (_rpc_phase_changed, _rpc_apply_deltas,
+	# etc.) live on MatchController. MatchScene passes multiplayer_node=null,
+	# so without this self-wire the @rpc dispatch would target MatchScene
+	# which has no such methods. Detached test controllers skip this so
+	# _send_rpc continues to no-op.
+	if _multiplayer_node == null and is_inside_tree():
+		_multiplayer_node = self
 	# Build MatchPlayer records from MatchStart seats.
 	state.players = []
 	var player_count = match_start.seats.size()

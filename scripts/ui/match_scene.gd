@@ -34,7 +34,7 @@ func _ready() -> void:
 	if match_start == null:
 		push_error("MatchScene: no MatchStart available; cannot run match")
 		return
-	controller = MatchController.new(session.is_host, self)
+	controller = MatchController.new(session.is_host, null)
 	add_child(controller)
 	controller.phase_changed.connect(_on_phase_changed)
 	controller.event_starting.connect(_on_event_starting)
