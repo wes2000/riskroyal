@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/bet_loadout_overlay.gd" id="1"]
+
+[node name="BetLoadoutOverlay" type="PanelContainer"]
+script = ExtResource("1")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+
+[node name="TitleLabel" type="Label" parent="VBox"]
+text = "Place your wager"
+
+[node name="WagerSlider" type="HSlider" parent="VBox"]
+min_value = 0.0
+max_value = 800.0
+step = 1.0
+
+[node name="WagerSpin" type="SpinBox" parent="VBox"]
+min_value = 0.0
+max_value = 800.0
+step = 1.0
+
+[node name="ReadyButton" type="Button" parent="VBox"]
+text = "Ready"
+
+[node name="SummaryLabel" type="Label" parent="VBox"]
+text = "Wager: 0 (Chips: 0)"
