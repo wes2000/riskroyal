@@ -76,8 +76,9 @@ func feed_remote_signal(from_peer: int, payload: Dictionary) -> void:
 		var t: String = payload["sdp_type"]
 		var sdp: String = payload.get("sdp", "")
 		conn.set_remote_description(t, sdp)
-		if t == "offer":
-			conn.create_answer()
+		# Godot WebRTC GDExtension auto-creates the SDP answer when the remote
+		# description is an offer; no explicit create_answer() call (which does
+		# not exist on WebRTCLibPeerConnection anyway).
 	elif payload.has("ice_candidate"):
 		var ic: Dictionary = payload["ice_candidate"]
 		var media: String = ic.get("media", "")
