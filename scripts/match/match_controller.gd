@@ -19,6 +19,11 @@ var state: MatchState
 var is_host: bool = false
 var _multiplayer_node = null  # for RPC routing in production; null in unit tests
 
+# Test seam: override per-step delay to 0 for synchronous tests.
+# Plan A: declared for forward-compat; the synchronous pipeline below
+# ignores it. Plan B wires this into a Timer-driven pacing path.
+var resolution_step_delay_ms_override: int = -1
+
 # Factory injected by tests; production code uses _default_event_factory.
 # IMPORTANT: do NOT initialize at declaration — instance methods aren't
 # bindable at field-init time in GDScript 2.0. Assigned in _init instead.
@@ -74,6 +79,8 @@ func _enter_phase_behavior() -> void:
 			_process_event_selection()
 		MatchPhase.Phase.MAIN_EVENT:
 			_process_main_event()
+		MatchPhase.Phase.RESOLUTION:
+			_process_resolution_phase()
 		_:
 			pass
 
@@ -157,3 +164,51 @@ func _advance_phase() -> void:
 		_:
 			return  # MATCH_END or unknown: do nothing
 	_set_phase(next_phase)
+
+func _process_resolution_phase() -> void:
+	var result = state.current_result
+	if result == null:
+		_advance_phase()
+		return
+	# Sequential substep emission. For tests, delay = 0 advances synchronously.
+	_emit_resolution_step("busts", _build_busts_payload(result))
+	_emit_resolution_step("cash_outs", _build_cash_outs_payload(result))
+	_apply_and_emit("chip_changes", result, "chip_delta")
+	_apply_and_emit("crown_awards", result, "crown_delta")
+	_emit_resolution_step("painful_reveal", result.painful_reveal)
+	_advance_phase()
+
+func _emit_resolution_step(name: String, payload: Dictionary) -> void:
+	resolution_step.emit(name, payload)
+
+func _build_busts_payload(result) -> Dictionary:
+	var bust_ids: Array = []
+	for pid in result.per_player.keys():
+		if result.bust_for(pid):
+			bust_ids.append(pid)
+	return {"bust_peer_ids": bust_ids}
+
+func _build_cash_outs_payload(result) -> Dictionary:
+	var co: Dictionary = {}
+	for pid in result.per_player.keys():
+		var entry = result.per_player[pid]
+		co[pid] = entry.get("cash_out_at", 0.0)
+	return {"cash_outs": co}
+
+func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
+	var deltas: Array = []
+	for pid in result.per_player.keys():
+		var d = int(result.per_player[pid].get(delta_key, 0))
+		if d == 0:
+			continue
+		var p = state.find_player(pid)
+		if p == null:
+			continue
+		match delta_key:
+			"chip_delta":
+				p.chips += d
+			"crown_delta":
+				p.crowns += d
+		deltas.append({"peer_id": pid, "delta": d})
+		player_resources_changed.emit(pid)
+	_emit_resolution_step(step_name, {"deltas": deltas})
