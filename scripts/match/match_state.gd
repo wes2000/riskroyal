@@ -1,0 +1,54 @@
+# Authoritative per-match state. Owned by host's MatchController; mirrored
+# on clients via RPC. Field-level mutation is host-only.
+extends RefCounted
+
+const MatchPhase = preload("res://scripts/match/match_phase.gd")
+const MatchPlayer = preload("res://scripts/match/match_player.gd")
+
+var event_index: int = 0
+var phase: int = MatchPhase.Phase.HOUSE_REVEAL
+var players: Array = []
+var current_event_id: String = ""
+var current_result = null  # EventResult or null
+var rng_seed: int = 0
+var rng: RandomNumberGenerator = null
+
+func seed_rng() -> void:
+	rng = RandomNumberGenerator.new()
+	rng.seed = rng_seed
+
+func find_player(peer_id: int):
+	for p in players:
+		if p.peer_id == peer_id:
+			return p
+	return null
+
+func active_players() -> Array:
+	var out: Array = []
+	for p in players:
+		if p.is_active_this_event:
+			out.append(p)
+	return out
+
+func to_dict() -> Dictionary:
+	var player_dicts: Array = []
+	for p in players:
+		player_dicts.append(p.to_dict())
+	return {
+		"event_index": event_index,
+		"phase": phase,
+		"players": player_dicts,
+		"current_event_id": current_event_id,
+		"rng_seed": rng_seed,
+	}
+
+static func from_dict(d: Dictionary) -> RefCounted:
+	var s = load("res://scripts/match/match_state.gd").new()
+	s.event_index = d.get("event_index", 0)
+	s.phase = d.get("phase", MatchPhase.Phase.HOUSE_REVEAL)
+	s.current_event_id = d.get("current_event_id", "")
+	s.rng_seed = d.get("rng_seed", 0)
+	s.players = []
+	for raw in d.get("players", []):
+		s.players.append(MatchPlayer.from_dict(raw))
+	return s
