@@ -8,6 +8,7 @@ const MatchPlayer = preload("res://scripts/match/match_player.gd")
 const MatchState = preload("res://scripts/match/match_state.gd")
 const MatchConfig = preload("res://scripts/match/match_config.gd")
 const EventContext = preload("res://scripts/events/event_context.gd")
+const Bounty = preload("res://scripts/match/bounty.gd")
 
 signal phase_changed(new_phase: int)
 signal event_starting(event_id: String, event_index: int)
@@ -18,6 +19,9 @@ signal request_return_to_lobby
 signal wager_acknowledged(peer_id: int, amount: int)
 signal bet_loadout_started(active_peer_ids: Array, max_per_player: int)
 signal bet_loadout_finished
+signal bounty_placed(bounty_dict: Dictionary)
+signal bounty_claimed(claimant_peer_id: int, bounty_dict: Dictionary, reward_chips: int)
+signal bounty_unclaimed(bounty_dict: Dictionary)
 
 var state: MatchState
 var is_host: bool = false
@@ -186,6 +190,11 @@ func _enter_phase_behavior() -> void:
 		return
 	match state.phase:
 		MatchPhase.Phase.HOUSE_REVEAL:
+			_auto_place_bounties()
+			for p in state.players:
+				p.played_this_event = []
+			state.event_modifiers = {}
+			state.pending_card_effects = []
 			await _schedule_advance()
 		MatchPhase.Phase.ANTE:
 			_process_ante_phase()
@@ -463,6 +472,80 @@ func _process_bounty_heat_update() -> void:
 		broadcast_deltas.append({"peer_id": pid, "chip_delta": 0, "crown_delta": 0, "heat_delta": d})
 	if broadcast_deltas.size() > 0 and is_host:
 		_send_rpc("_rpc_apply_deltas", [broadcast_deltas])
+	_resolve_bounties(result)
+
+func _auto_place_bounties() -> void:
+	if not is_host:
+		return
+	if state.event_index == 0:
+		return  # No auto-placement on the very first event (no rankings yet)
+	state.bounties = []
+	var leader_id = _find_chip_leader_peer_id()
+	var heat_id = _find_heat_leader_peer_id()
+	var leader_target = state.find_player(leader_id)
+	var heat_target = state.find_player(heat_id)
+	var leader_bounty = Bounty.new()
+	leader_bounty.origin = "leader"
+	leader_bounty.target = leader_id
+	leader_bounty.condition = "bust"
+	leader_bounty.reward_chips = MatchConfig.BOUNTY_BASE_REWARD
+	leader_bounty.placed_at_event = state.event_index
+	leader_bounty.placed_at_target_heat = leader_target.heat if leader_target != null else 0
+	var heat_bounty = Bounty.new()
+	heat_bounty.origin = "heat"
+	heat_bounty.target = heat_id
+	heat_bounty.condition = "bust"
+	heat_bounty.reward_chips = MatchConfig.BOUNTY_BASE_REWARD
+	heat_bounty.placed_at_event = state.event_index
+	heat_bounty.placed_at_target_heat = heat_target.heat if heat_target != null else 0
+	state.bounties = [leader_bounty, heat_bounty]
+	var serialized = [leader_bounty.to_dict(), heat_bounty.to_dict()]
+	_send_rpc("_rpc_bounties_placed", [serialized])
+	bounty_placed.emit(leader_bounty.to_dict())
+	bounty_placed.emit(heat_bounty.to_dict())
+
+func _find_chip_leader_peer_id() -> int:
+	var leader = state.players[0] if state.players.size() > 0 else null
+	for p in state.players:
+		if p.chips > leader.chips:
+			leader = p
+	return leader.peer_id if leader != null else 0
+
+func _find_heat_leader_peer_id() -> int:
+	var leader = state.players[0] if state.players.size() > 0 else null
+	for p in state.players:
+		if p.heat > leader.heat:
+			leader = p
+	return leader.peer_id if leader != null else 0
+
+func _resolve_bounties(result) -> void:
+	if not is_host:
+		return
+	for bounty in state.bounties:
+		var claimants: Array = []
+		for p in state.players:
+			if Bounty.satisfies(bounty, result, p.peer_id):
+				claimants.append(p.peer_id)
+		if claimants.is_empty():
+			_send_rpc("_rpc_bounty_unclaimed", [bounty.to_dict()])
+			bounty_unclaimed.emit(bounty.to_dict())
+			continue
+		var reward = Bounty.compute_reward(bounty)
+		if claimants.size() == 1:
+			var claimant = state.find_player(claimants[0])
+			claimant.chips += reward
+			player_resources_changed.emit(claimants[0])
+			_send_rpc("_rpc_bounty_claimed", [claimants[0], bounty.to_dict(), reward])
+			bounty_claimed.emit(claimants[0], bounty.to_dict(), reward)
+		else:
+			var split = int(reward / claimants.size())
+			for c_id in claimants:
+				var c = state.find_player(c_id)
+				c.chips += split
+				player_resources_changed.emit(c_id)
+				_send_rpc("_rpc_bounty_claimed", [c_id, bounty.to_dict(), split])
+				bounty_claimed.emit(c_id, bounty.to_dict(), split)
+	state.bounties = []
 
 func _process_match_end() -> void:
 	var rankings = state.players.duplicate()
@@ -525,3 +608,22 @@ func _rpc_match_ended(serialized_rankings: Array) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _rpc_return_to_lobby() -> void:
 	request_return_to_lobby.emit()
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_bounties_placed(serialized_bounties: Array) -> void:
+	state.bounties = []
+	for d in serialized_bounties:
+		state.bounties.append(Bounty.from_dict(d))
+		bounty_placed.emit(d)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_bounty_claimed(claimant_peer_id: int, bounty_dict: Dictionary, reward_chips: int) -> void:
+	var p = state.find_player(claimant_peer_id)
+	if p != null:
+		p.chips += reward_chips
+		player_resources_changed.emit(claimant_peer_id)
+	bounty_claimed.emit(claimant_peer_id, bounty_dict, reward_chips)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_bounty_unclaimed(bounty_dict: Dictionary) -> void:
+	bounty_unclaimed.emit(bounty_dict)
