@@ -9,6 +9,7 @@ var players: Array = []
 var event_index: int = 0
 var rng_seed: int = 0
 var wagers: Dictionary = {}
+var is_host: bool = false
 
 func to_dict() -> Dictionary:
 	var player_dicts: Array = []
@@ -19,6 +20,7 @@ func to_dict() -> Dictionary:
 		"event_index": event_index,
 		"rng_seed": rng_seed,
 		"wagers": wagers,
+		"is_host": is_host,
 	}
 
 static func from_dict(d: Dictionary) -> RefCounted:
@@ -26,6 +28,7 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	c.event_index = d.get("event_index", 0)
 	c.rng_seed = d.get("rng_seed", 0)
 	c.wagers = d.get("wagers", {})
+	c.is_host = d.get("is_host", false)
 	c.players = []
 	for raw in d.get("players", []):
 		c.players.append(MatchPlayer.from_dict(raw))

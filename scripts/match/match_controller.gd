@@ -227,6 +227,7 @@ func _build_event_context():
 			ctx.players.append(p)
 	ctx.event_index = state.event_index
 	ctx.rng_seed = state.rng_seed ^ (state.event_index * 0x9E3779B9)
+	ctx.is_host = is_host
 	var ante = MatchConfig.ANTE_BY_EVENT_INDEX[state.event_index]
 	for p in ctx.players:
 		ctx.wagers[p.peer_id] = ante
