@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/resolution_overlay.gd" id="1"]
+
+[node name="ResolutionOverlay" type="PanelContainer"]
+script = ExtResource("1")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+
+[node name="Title" type="Label" parent="VBox"]
+text = "Resolution"
+
+[node name="Lines" type="VBoxContainer" parent="VBox"]
