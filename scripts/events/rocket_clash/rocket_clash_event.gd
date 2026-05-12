@@ -8,6 +8,97 @@ const INSTABUST_PROB: float = 0.05
 const MAX_CRASH_AT: float = 100.0
 const CASH_OUT_TOLERANCE: float = 0.05
 
+# Per-round state (host populates; mirrored on clients via _rpc_rocket_launched).
+var _crash_at: float = 0.0
+var _start_time_ms: int = 0
+var _cash_outs: Dictionary = {}      # peer_id -> cash_out_at
+var _active_peers: Array = []        # peer_ids active at launch
+var _is_host: bool = false
+var _finished: bool = false
+var _stashed_context = null          # held so _finish can call compute_event_result
+
+# RPC routing (mirror of MatchController's pattern). Tests inject
+# FakeMultiplayerNode; production self-wires via the same pattern.
+var _multiplayer_node = null
+
+# Test seams
+var _force_crash_at_override: float = -1.0  # negative = use RNG
+var _growth_rate_override: float = -1.0     # negative = use MatchConfig
+
+# Scene-tree refs (resolved in _ready)
+@onready var _multiplier_label: Label = $VBox/MultiplierLabel if has_node("VBox/MultiplierLabel") else null
+@onready var _cash_out_button: Button = $VBox/CashOutButton if has_node("VBox/CashOutButton") else null
+
+const MatchConfig = preload("res://scripts/match/match_config.gd")
+
+# Override the EventNode contract methods:
+
+func get_event_id() -> String:
+	return "rocket_clash"
+
+func _run(context) -> void:
+	_stashed_context = context
+	_is_host = context.is_host
+	_active_peers = []
+	for p in context.players:
+		_active_peers.append(p.peer_id)
+	var rng = RandomNumberGenerator.new()
+	rng.seed = context.rng_seed
+	if not _is_host:
+		return  # client waits for _rpc_rocket_launched
+	# Production self-wire: if no injection and we're in tree, route via self.
+	if _multiplayer_node == null and is_inside_tree():
+		_multiplayer_node = self
+	# Compute crash_at deterministically.
+	if _force_crash_at_override >= 1.0:
+		_crash_at = _force_crash_at_override
+	else:
+		_crash_at = compute_crash_at(rng)
+	_start_time_ms = Time.get_ticks_msec()
+	_send_rpc("_rpc_rocket_launched", [_start_time_ms, _crash_at])
+	# Host also processes the rocket locally as if it received the broadcast.
+	_on_rocket_launched_local(_start_time_ms, _crash_at)
+
+func _send_rpc(method_name: String, args: Array = []) -> void:
+	if _multiplayer_node == null:
+		return
+	match args.size():
+		0: _multiplayer_node.rpc(method_name)
+		1: _multiplayer_node.rpc(method_name, args[0])
+		2: _multiplayer_node.rpc(method_name, args[0], args[1])
+		3: _multiplayer_node.rpc(method_name, args[0], args[1], args[2])
+
+func _on_rocket_launched_local(start_time_ms: int, crash_at: float) -> void:
+	_start_time_ms = start_time_ms
+	_crash_at = crash_at
+	set_process(true)
+
+func _process(_delta: float) -> void:
+	if _finished or _start_time_ms == 0:
+		return
+	var elapsed_ms = Time.get_ticks_msec() - _start_time_ms
+	var growth = _growth_rate_override if _growth_rate_override >= 0.0 else MatchConfig.ROCKET_GROWTH_RATE
+	var mult = multiplier_at(elapsed_ms, growth)
+	if _multiplier_label != null:
+		_multiplier_label.text = "%.2fx" % mult
+	if _is_host and mult >= _crash_at and not _finished:
+		_finish()
+
+func _finish() -> void:
+	_finished = true
+	set_process(false)
+	var busted: Array = []
+	for pid in _active_peers:
+		if not _cash_outs.has(pid):
+			busted.append(pid)
+	var result = compute_event_result(_stashed_context, _crash_at, _cash_outs, busted)
+	event_complete.emit(result)
+
+# RPC receiver for clients (and the host's own local invocation via _on_rocket_launched_local)
+@rpc("authority", "call_remote", "reliable")
+func _rpc_rocket_launched(start_time_ms: int, crash_at: float) -> void:
+	_on_rocket_launched_local(start_time_ms, crash_at)
+
 # Static helper: deterministic Aviator-style crash distribution from a
 # seeded RNG. 5% instabust at 1.00x; otherwise max(1.0, 0.99 / (1 - r))
 # capped at MAX_CRASH_AT. Tested without scene instantiation.
