@@ -73,7 +73,7 @@ func _on_state_changed(new_state: int) -> void:
 			_pause_label.text = format_pause_message(session.players)
 
 func _on_match_starting(_match_start) -> void:
-	get_tree().change_scene_to_file("res://scenes/placeholder_match.tscn")
+	get_tree().change_scene_to_file("res://scenes/match_scene.tscn")
 
 func _on_name_submitted(value: String) -> void:
 	session.set_name(value)
