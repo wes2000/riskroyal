@@ -16,6 +16,8 @@ signal match_ended(rankings: Array)
 signal player_resources_changed(peer_id: int)
 signal request_return_to_lobby
 signal wager_acknowledged(peer_id: int, amount: int)
+signal bet_loadout_started(active_peer_ids: Array, max_per_player: int)
+signal bet_loadout_finished
 
 var state: MatchState
 var is_host: bool = false
@@ -48,6 +50,10 @@ var _event_timeout_timer: Timer = null
 # Test seam: override watchdog timeout in seconds. -1 = use MatchConfig.
 var event_timeout_sec_override: float = -1.0
 
+# Test seam: override BET_LOADOUT phase timeout (mirror of event_timeout pattern).
+# Negative = use MatchConfig.BET_LOADOUT_TIMEOUT_SEC. 0.0 = bypass timer entirely.
+var bet_loadout_timeout_sec_override: float = -1.0
+
 func _default_event_factory(path: String):
 	var ps = load(path)
 	if ps == null:
@@ -58,6 +64,11 @@ func _event_timeout_sec() -> float:
 	if event_timeout_sec_override >= 0.0:
 		return event_timeout_sec_override
 	return float(MatchConfig.EVENT_TIMEOUT_SEC)
+
+func _bet_loadout_timeout_sec() -> float:
+	if bet_loadout_timeout_sec_override >= 0.0:
+		return bet_loadout_timeout_sec_override
+	return float(MatchConfig.BET_LOADOUT_TIMEOUT_SEC)
 
 func _start_event_timeout_watchdog() -> void:
 	if not is_inside_tree():
@@ -183,6 +194,7 @@ func _enter_phase_behavior() -> void:
 			_process_event_selection()
 			await _schedule_advance()
 		MatchPhase.Phase.BET_LOADOUT:
+			await _process_bet_loadout()
 			await _schedule_advance()
 		MatchPhase.Phase.MAIN_EVENT:
 			_process_main_event()
@@ -221,6 +233,39 @@ func _process_event_selection() -> void:
 	var pool = MatchConfig.EVENT_POOL
 	var idx = state.rng.randi() % pool.size()
 	state.current_event_id = pool[idx]
+
+func _process_bet_loadout() -> void:
+	if not is_host:
+		return
+	state.pending_wagers = {}
+	var active_peer_ids: Array = []
+	var max_per_player: int = 0
+	for p in state.players:
+		if p.is_active_this_event:
+			active_peer_ids.append(p.peer_id)
+			max_per_player = max(max_per_player, int(p.chips * MatchConfig.ROCKET_CLASH_MAX_WAGER_FACTOR))
+	bet_loadout_started.emit(active_peer_ids, max_per_player)
+	var timeout_sec = _bet_loadout_timeout_sec()
+	if timeout_sec <= 0.0:
+		# Test path: bypass timer entirely.
+		bet_loadout_finished.emit()
+		return
+	if not is_inside_tree():
+		# Detached controller: no SceneTree to create timer.
+		bet_loadout_finished.emit()
+		return
+	var timer = get_tree().create_timer(timeout_sec)
+	while timer.time_left > 0.0:
+		if _all_active_ready(active_peer_ids):
+			break
+		await get_tree().process_frame
+	bet_loadout_finished.emit()
+
+func _all_active_ready(active_peer_ids: Array) -> bool:
+	for pid in active_peer_ids:
+		if not state.pending_wagers.has(pid):
+			return false
+	return true
 
 func _process_main_event() -> void:
 	if state.current_event_id.is_empty():
