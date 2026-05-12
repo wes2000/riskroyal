@@ -234,16 +234,32 @@ func _schedule_advance() -> void:
 		await get_tree().create_timer(delay_ms / 1000.0).timeout
 	_advance_phase()
 
+func _resolution_step_delay_ms() -> int:
+	if resolution_step_delay_ms_override >= 0:
+		return resolution_step_delay_ms_override
+	return MatchConfig.RESOLUTION_STEP_DELAY_MS
+
+func _await_resolution_step_delay() -> void:
+	if not is_inside_tree():
+		return  # detached test path — no SceneTree available
+	var ms = _resolution_step_delay_ms()
+	if ms <= 0:
+		return
+	await get_tree().create_timer(ms / 1000.0).timeout
+
 func _process_resolution_phase() -> void:
 	var result = state.current_result
 	if result == null:
 		_advance_phase()
 		return
-	# Sequential substep emission. For tests, delay = 0 advances synchronously.
 	_emit_resolution_step("busts", _build_busts_payload(result))
+	await _await_resolution_step_delay()
 	_emit_resolution_step("cash_outs", _build_cash_outs_payload(result))
+	await _await_resolution_step_delay()
 	_apply_and_emit("chip_changes", result, "chip_delta")
+	await _await_resolution_step_delay()
 	_apply_and_emit("crown_awards", result, "crown_delta")
+	await _await_resolution_step_delay()
 	_emit_resolution_step("painful_reveal", result.painful_reveal)
 	_advance_phase()
 
