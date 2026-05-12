@@ -116,6 +116,10 @@ func _process_event_selection() -> void:
 func _process_main_event() -> void:
 	if state.current_event_id.is_empty():
 		return
+	# Defensive: clear any stale event node from a prior, unfinished MAIN_EVENT.
+	if _current_event_node != null:
+		_current_event_node.queue_free()
+		_current_event_node = null
 	_current_event_node = _event_factory.call(state.current_event_id)
 	if _current_event_node == null:
 		# Load failed for a non-empty path; synthesize empty result and advance.
@@ -207,8 +211,8 @@ func _process_resolution_phase() -> void:
 	_emit_resolution_step("painful_reveal", result.painful_reveal)
 	_advance_phase()
 
-func _emit_resolution_step(name: String, payload: Dictionary) -> void:
-	resolution_step.emit(name, payload)
+func _emit_resolution_step(step_name: String, payload: Dictionary) -> void:
+	resolution_step.emit(step_name, payload)
 
 func _build_busts_payload(result) -> Dictionary:
 	var bust_ids: Array = []
