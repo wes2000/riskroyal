@@ -15,6 +15,7 @@ signal resolution_step(step_name: String, payload: Dictionary)
 signal match_ended(rankings: Array)
 signal player_resources_changed(peer_id: int)
 signal request_return_to_lobby
+signal wager_acknowledged(peer_id: int, amount: int)
 
 var state: MatchState
 var is_host: bool = false
@@ -130,6 +131,27 @@ func _send_rpc(method_name: String, args: Array = []) -> void:
 		_:
 			push_error("MatchController._send_rpc: unsupported arity %d" % args.size())
 
+# Public: called locally by BetLoadoutOverlay's Ready handler.
+func submit_wager(amount: int) -> void:
+	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	_send_rpc("_rpc_set_wager", [my_peer_id, amount])
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_set_wager(peer_id: int, amount: int) -> void:
+	if not is_host:
+		return
+	var player = state.find_player(peer_id)
+	if player == null:
+		return
+	var clamped = clamp(amount, 0, player.chips)
+	state.pending_wagers[peer_id] = clamped
+	_send_rpc("_rpc_wager_acknowledged", [peer_id, clamped])
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_wager_acknowledged(_peer_id: int, _amount: int) -> void:
+	# Re-emits a local signal for BetLoadoutOverlay to update readied state.
+	wager_acknowledged.emit(_peer_id, _amount)
+
 func _phase_change_context() -> Dictionary:
 	return {
 		"event_index": state.event_index,
@@ -228,9 +250,13 @@ func _build_event_context():
 	ctx.event_index = state.event_index
 	ctx.rng_seed = state.rng_seed ^ (state.event_index * 0x9E3779B9)
 	ctx.is_host = is_host
-	var ante = MatchConfig.ANTE_BY_EVENT_INDEX[state.event_index]
-	for p in ctx.players:
-		ctx.wagers[p.peer_id] = ante
+	if not state.pending_wagers.is_empty():
+		for p in ctx.players:
+			ctx.wagers[p.peer_id] = state.pending_wagers.get(p.peer_id, 0)
+	else:
+		var ante = MatchConfig.ANTE_BY_EVENT_INDEX[state.event_index]
+		for p in ctx.players:
+			ctx.wagers[p.peer_id] = ante
 	return ctx
 
 func _on_event_complete(result) -> void:

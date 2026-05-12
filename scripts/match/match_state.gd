@@ -12,6 +12,7 @@ var current_event_id: String = ""
 var current_result = null  # EventResult or null
 var rng_seed: int = 0
 var rng: RandomNumberGenerator = null
+var pending_wagers: Dictionary = {}
 
 func seed_rng() -> void:
 	rng = RandomNumberGenerator.new()
@@ -40,6 +41,7 @@ func to_dict() -> Dictionary:
 		"players": player_dicts,
 		"current_event_id": current_event_id,
 		"rng_seed": rng_seed,
+		"pending_wagers": pending_wagers.duplicate(true),
 	}
 
 static func from_dict(d: Dictionary) -> RefCounted:
@@ -48,6 +50,7 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	s.phase = d.get("phase", MatchPhase.Phase.HOUSE_REVEAL)
 	s.current_event_id = d.get("current_event_id", "")
 	s.rng_seed = d.get("rng_seed", 0)
+	s.pending_wagers = d.get("pending_wagers", {}).duplicate(true)
 	s.players = []
 	for raw in d.get("players", []):
 		s.players.append(MatchPlayer.from_dict(raw))
