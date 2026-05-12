@@ -27,3 +27,61 @@ static func compute_crash_at(rng: RandomNumberGenerator) -> float:
 static func multiplier_at(elapsed_ms: int, growth_rate: float) -> float:
 	var elapsed_sec = float(elapsed_ms) / 1000.0
 	return exp(growth_rate * elapsed_sec)
+
+const EventResult = preload("res://scripts/events/event_result.gd")
+
+# Builds the EventResult per spec section 6.1. Survivors:
+# chip_delta = wager × cash_out_at; bust: false; cash_out_at recorded.
+# Busts: chip_delta = -wager; bust: true; cash_out_at = 0.
+# Crown: 1 for the survivor with the highest cash_out_at; 0 otherwise.
+# painful_reveal payload: crash_at + winner identity + per-player summary.
+static func compute_event_result(context, crash_at: float, cash_outs: Dictionary, busted: Array) -> RefCounted:
+	var result = EventResult.new()
+	result.event_id = "rocket_clash"
+	var summary: Array = []
+	var winner_peer_id = 0
+	var winner_name = ""
+	var winner_cash_out = -1.0
+	for player in context.players:
+		var pid = player.peer_id
+		var wager = int(context.wagers.get(pid, 0))
+		if busted.has(pid):
+			result.per_player[pid] = {
+				"chip_delta": -wager,
+				"crown_delta": 0,
+				"heat_delta": 0,
+				"bust": true,
+				"cash_out_at": 0.0,
+			}
+			summary.append({
+				"peer_id": pid, "name": player.name, "cash_out_at": 0.0,
+				"chip_delta": -wager, "busted": true, "wager": wager,
+			})
+		else:
+			var cash_out_at = float(cash_outs.get(pid, 0.0))
+			var chip_delta = int(wager * cash_out_at)
+			result.per_player[pid] = {
+				"chip_delta": chip_delta,
+				"crown_delta": 0,
+				"heat_delta": 0,
+				"bust": false,
+				"cash_out_at": cash_out_at,
+			}
+			summary.append({
+				"peer_id": pid, "name": player.name, "cash_out_at": cash_out_at,
+				"chip_delta": chip_delta, "busted": false, "wager": wager,
+			})
+			if cash_out_at > winner_cash_out:
+				winner_cash_out = cash_out_at
+				winner_peer_id = pid
+				winner_name = player.name
+	# Award the Crown to the highest-cash-out survivor (if any survived).
+	if winner_peer_id != 0:
+		result.per_player[winner_peer_id]["crown_delta"] = 1
+	result.painful_reveal = {
+		"crash_at": crash_at,
+		"winner_peer_id": winner_peer_id,
+		"winner_name": winner_name,
+		"cash_outs_summary": summary,
+	}
+	return result
