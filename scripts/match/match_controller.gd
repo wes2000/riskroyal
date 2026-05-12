@@ -38,11 +38,43 @@ var _current_event_node = null
 # in Plan B to freeze progression when a peer disconnects.
 var _paused: bool = false
 
+# Watchdog timer for the currently-running MAIN_EVENT. Created in
+# _process_main_event when the event node is instantiated; freed in
+# _on_event_complete and _on_event_timeout.
+var _event_timeout_timer: Timer = null
+
+# Test seam: override watchdog timeout in seconds. -1 = use MatchConfig.
+var event_timeout_sec_override: float = -1.0
+
 func _default_event_factory(path: String):
 	var ps = load(path)
 	if ps == null:
 		return null
 	return ps.instantiate()
+
+func _event_timeout_sec() -> float:
+	if event_timeout_sec_override >= 0.0:
+		return event_timeout_sec_override
+	return float(MatchConfig.EVENT_TIMEOUT_SEC)
+
+func _start_event_timeout_watchdog() -> void:
+	if not is_inside_tree():
+		# Tests that bypass the scene tree skip the watchdog; the test
+		# may call _on_event_timeout directly to verify timeout behavior.
+		return
+	_clear_event_timeout_watchdog()
+	_event_timeout_timer = Timer.new()
+	_event_timeout_timer.one_shot = true
+	_event_timeout_timer.wait_time = _event_timeout_sec()
+	add_child(_event_timeout_timer)
+	_event_timeout_timer.timeout.connect(_on_event_timeout)
+	_event_timeout_timer.start()
+
+func _clear_event_timeout_watchdog() -> void:
+	if _event_timeout_timer != null:
+		if _event_timeout_timer.is_inside_tree():
+			_event_timeout_timer.queue_free()
+		_event_timeout_timer = null
 
 func _init(p_is_host: bool = false, multiplayer_node = null) -> void:
 	is_host = p_is_host
@@ -150,6 +182,7 @@ func _process_main_event() -> void:
 		return
 	_current_event_node.event_complete.connect(_on_event_complete)
 	event_starting.emit(_current_event_node.get_event_id(), state.event_index)
+	_start_event_timeout_watchdog()
 	var context = _build_event_context()
 	_current_event_node._run(context)
 
@@ -167,12 +200,14 @@ func _build_event_context():
 
 func _on_event_complete(result) -> void:
 	state.current_result = result
+	_clear_event_timeout_watchdog()
 	if _current_event_node != null:
 		_current_event_node.queue_free()
 		_current_event_node = null
 	_advance_phase()
 
 func _on_event_timeout() -> void:
+	_clear_event_timeout_watchdog()
 	if _current_event_node == null:
 		return
 	var empty = preload("res://scripts/events/event_result.gd").new()
