@@ -9,6 +9,7 @@ const MatchState = preload("res://scripts/match/match_state.gd")
 const MatchConfig = preload("res://scripts/match/match_config.gd")
 const EventContext = preload("res://scripts/events/event_context.gd")
 const Bounty = preload("res://scripts/match/bounty.gd")
+const CardRegistry = preload("res://scripts/cards/card_registry.gd")
 
 signal phase_changed(new_phase: int)
 signal event_starting(event_id: String, event_index: int)
@@ -23,6 +24,8 @@ signal bet_loadout_finished
 signal bounty_placed(bounty_dict: Dictionary)
 signal bounty_claimed(claimant_peer_id: int, bounty_dict: Dictionary, reward_chips: int)
 signal bounty_unclaimed(bounty_dict: Dictionary)
+signal card_effect_applied(peer_id: int, card_id: String, effect_result: Dictionary)
+signal card_play_rejected(card_id: String, reason: String)
 
 var state: MatchState
 var is_host: bool = false
@@ -147,10 +150,28 @@ func _send_rpc(method_name: String, args: Array = []) -> void:
 		_:
 			push_error("MatchController._send_rpc: unsupported arity %d" % args.size())
 
+func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array = []) -> void:
+	# Targeted RPC. Routes through _multiplayer_node.rpc_id when non-null;
+	# no-ops in unit tests where _multiplayer_node is null. FakeMultiplayerNode
+	# already records {method, peer_id, args} for rpc_id calls.
+	if _multiplayer_node == null:
+		return
+	match args.size():
+		0: _multiplayer_node.rpc_id(peer_id, method_name)
+		1: _multiplayer_node.rpc_id(peer_id, method_name, args[0])
+		2: _multiplayer_node.rpc_id(peer_id, method_name, args[0], args[1])
+		3: _multiplayer_node.rpc_id(peer_id, method_name, args[0], args[1], args[2])
+		_:
+			push_error("MatchController._send_rpc_to_peer: unsupported arity %d" % args.size())
+
 # Public: called locally by BetLoadoutOverlay's Ready handler.
 func submit_loadout_change(loadout: Array) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
 	_send_rpc("_rpc_loadout_set", [my_peer_id, loadout])
+
+func submit_card_play(card_id: String, target_peer_id: int = 0, params = null) -> void:
+	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	_send_rpc("_rpc_card_play_requested", [my_peer_id, card_id, target_peer_id, params])
 
 func submit_wager(amount: int) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
@@ -598,6 +619,97 @@ func return_to_lobby() -> void:
 	if not is_host:
 		return
 	_send_rpc("_rpc_return_to_lobby", [])
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_card_play_requested(peer_id: int, card_id: String, target_peer_id: int, params) -> void:
+	if not is_host:
+		return
+	var player = state.find_player(peer_id)
+	if player == null:
+		return
+	if not (card_id in player.loadout):
+		return  # silent reject; UI should not have shown this card
+	if card_id in player.played_this_event:
+		return  # idempotent silent drop (double-click guard)
+	var card = CardRegistry.get_card(card_id)
+	if card.is_empty():
+		return
+	var current_window = _current_timing_window()
+	if card.get("timing", "") != current_window:
+		return  # silent reject; timing mismatch
+	if card.get("target_required", false) and target_peer_id == 0:
+		_send_rpc_to_peer(peer_id, "_rpc_card_play_rejected", [card_id, "target_required"])
+		return
+	var ctx = _build_event_context()
+	# For self-targeting cards, pass peer_id as target_peer_id; for target-required
+	# cards, pass the actual target_peer_id the caller specified.
+	var effect_target = peer_id if not card.get("target_required", false) else target_peer_id
+	var effect_result = CardRegistry.apply_card(card_id, ctx, effect_target, params)
+	if not effect_result.get("applied", false):
+		_send_rpc_to_peer(peer_id, "_rpc_card_play_rejected", [card_id, "effect_declined"])
+		return
+	_apply_effect_result(effect_result, peer_id)
+	player.played_this_event.append(card_id)
+	_send_rpc("_rpc_card_effect_applied", [peer_id, card_id, effect_result])
+	card_effect_applied.emit(peer_id, card_id, effect_result)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_card_effect_applied(peer_id: int, card_id: String, effect_result: Dictionary) -> void:
+	# Clients mirror via the same dispatcher
+	_apply_effect_result(effect_result, peer_id)
+	var player = state.find_player(peer_id)
+	if player != null and not (card_id in player.played_this_event):
+		player.played_this_event.append(card_id)
+	card_effect_applied.emit(peer_id, card_id, effect_result)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_card_play_rejected(card_id: String, reason: String) -> void:
+	card_play_rejected.emit(card_id, reason)
+
+func _current_timing_window() -> String:
+	match state.phase:
+		MatchPhase.Phase.BET_LOADOUT:
+			return "bet_loadout"
+		MatchPhase.Phase.MAIN_EVENT:
+			return "cash_out"
+		_:
+			return ""
+
+func _apply_effect_result(effect: Dictionary, peer_id: int) -> void:
+	if not effect.get("applied", false):
+		return
+	var t = effect.get("type", "")
+	match t:
+		"insurance_pre":
+			_ensure_modifiers(peer_id)
+			state.event_modifiers[peer_id]["insurance_pre"] = true
+		"heat_shield":
+			_ensure_modifiers(peer_id)
+			state.event_modifiers[peer_id]["heat_shield"] = true
+		"wager_multiplier":
+			_ensure_modifiers(peer_id)
+			state.event_modifiers[peer_id]["wager_multiplier"] = float(effect.get("multiplier", 1.0))
+		"late_cash_bonus":
+			_ensure_modifiers(peer_id)
+			state.event_modifiers[peer_id]["late_cash_bonus"] = true
+			state.event_modifiers[peer_id]["late_cash_threshold"] = float(effect.get("threshold", 5.0))
+			state.event_modifiers[peer_id]["late_cash_bonus_chips"] = int(effect.get("bonus_chips", 200))
+		"underdog_multiplier":
+			_ensure_modifiers(peer_id)
+			state.event_modifiers[peer_id]["underdog_multiplier"] = float(effect.get("multiplier", 1.5))
+		"double_or_nothing":
+			var new_wager = int(effect.get("new_wager", 0))
+			state.pending_wagers[peer_id] = new_wager
+			# Only host re-broadcasts the wager change. Clients mirror via
+			# _rpc_card_effect_applied -> this dispatcher; they must not re-broadcast.
+			if is_host:
+				_send_rpc("_rpc_wager_acknowledged", [peer_id, new_wager])
+		_:
+			push_warning("Unhandled effect type: %s" % t)
+
+func _ensure_modifiers(peer_id: int) -> void:
+	if not state.event_modifiers.has(peer_id):
+		state.event_modifiers[peer_id] = {}
 
 @rpc("authority", "call_remote", "reliable")
 func _rpc_phase_changed(phase: int, ctx: Dictionary) -> void:
