@@ -11,6 +11,9 @@ var session  # NetSession-like
 
 @onready var _code_label: Label = $VBoxContainer/CodeLabel if has_node("VBoxContainer/CodeLabel") else null
 @onready var _slot_container: HBoxContainer = $VBoxContainer/SlotContainer if has_node("VBoxContainer/SlotContainer") else null
+@onready var _name_input: LineEdit = $VBoxContainer/LocalPanel/NameInput if has_node("VBoxContainer/LocalPanel/NameInput") else null
+@onready var _color_picker: OptionButton = $VBoxContainer/LocalPanel/ColorPicker if has_node("VBoxContainer/LocalPanel/ColorPicker") else null
+@onready var _ready_check: CheckBox = $VBoxContainer/LocalPanel/ReadyCheck if has_node("VBoxContainer/LocalPanel/ReadyCheck") else null
 
 func _ready() -> void:
 	if session == null:
@@ -25,6 +28,13 @@ func _ready() -> void:
 	session.match_starting.connect(_on_match_starting)
 
 	_refresh()
+
+	if _name_input != null:
+		_name_input.text_submitted.connect(_on_name_submitted)
+	if _color_picker != null:
+		_color_picker.item_selected.connect(_on_color_picked)
+	if _ready_check != null:
+		_ready_check.toggled.connect(_on_ready_toggled)
 
 func _refresh() -> void:
 	if _code_label != null and session.is_host:
@@ -48,6 +58,15 @@ func _on_state_changed(_new_state: int) -> void:
 
 func _on_match_starting(_match_start) -> void:
 	get_tree().change_scene_to_file("res://scenes/placeholder_match.tscn")
+
+func _on_name_submitted(value: String) -> void:
+	session.set_name(value)
+
+func _on_color_picked(index: int) -> void:
+	session.set_color(index)
+
+func _on_ready_toggled(pressed: bool) -> void:
+	session.set_ready(pressed)
 
 static func format_slot_label(slot) -> String:
 	if slot == null:

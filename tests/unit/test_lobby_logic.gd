@@ -43,3 +43,27 @@ func test_format_slot_marks_disconnected():
 	s.name = "Maya"
 	s.connected = false
 	assert_true("disconnected" in Lobby.format_slot_label(s).to_lower())
+
+func test_on_name_submitted_calls_set_name():
+	var session = _make_session()
+	var lobby = Lobby.new()
+	lobby.session = session
+	lobby._on_name_submitted("Maya")
+	var slot = session.players[0]
+	assert_eq(slot.name, "Maya")
+
+func test_on_color_picked_calls_set_color():
+	var session = _make_session()
+	var lobby = Lobby.new()
+	lobby.session = session
+	lobby._on_color_picked(4)
+	var slot = session.players[0]
+	assert_eq(slot.color_index, 4)
+
+func test_on_ready_toggled_calls_set_ready():
+	var session = _make_session()
+	var lobby = Lobby.new()
+	lobby.session = session
+	lobby._on_ready_toggled(true)
+	var slot = session.players[0]
+	assert_true(slot.ready)
