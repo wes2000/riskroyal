@@ -20,3 +20,10 @@ static func compute_crash_at(rng: RandomNumberGenerator) -> float:
 		return MAX_CRASH_AT
 	var crash = 0.99 / (1.0 - r)
 	return max(1.0, min(crash, MAX_CRASH_AT))
+
+# Exponential growth: multiplier(t) = exp(growth_rate × elapsed_sec).
+# Used by every peer to compute its local display multiplier from the
+# host-broadcast start_time_ms. Pure math, no SceneTree dependency.
+static func multiplier_at(elapsed_ms: int, growth_rate: float) -> float:
+	var elapsed_sec = float(elapsed_ms) / 1000.0
+	return exp(growth_rate * elapsed_sec)
