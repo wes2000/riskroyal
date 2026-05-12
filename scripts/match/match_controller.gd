@@ -17,6 +17,7 @@ signal match_ended(rankings: Array)
 signal player_resources_changed(peer_id: int)
 signal request_return_to_lobby
 signal wager_acknowledged(peer_id: int, amount: int)
+signal loadout_acknowledged(peer_id: int, loadout: Array)
 signal bet_loadout_started(active_peer_ids: Array, max_per_player: int)
 signal bet_loadout_finished
 signal bounty_placed(bounty_dict: Dictionary)
@@ -147,6 +148,10 @@ func _send_rpc(method_name: String, args: Array = []) -> void:
 			push_error("MatchController._send_rpc: unsupported arity %d" % args.size())
 
 # Public: called locally by BetLoadoutOverlay's Ready handler.
+func submit_loadout_change(loadout: Array) -> void:
+	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	_send_rpc("_rpc_loadout_set", [my_peer_id, loadout])
+
 func submit_wager(amount: int) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
 	_send_rpc("_rpc_set_wager", [my_peer_id, amount])
@@ -166,6 +171,31 @@ func _rpc_set_wager(peer_id: int, amount: int) -> void:
 func _rpc_wager_acknowledged(_peer_id: int, _amount: int) -> void:
 	# Re-emits a local signal for BetLoadoutOverlay to update readied state.
 	wager_acknowledged.emit(_peer_id, _amount)
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_loadout_set(peer_id: int, loadout: Array) -> void:
+	if not is_host:
+		return
+	if state.phase != MatchPhase.Phase.BET_LOADOUT:
+		return  # Silent reject; UI should disable slots outside BET_LOADOUT
+	var player = state.find_player(peer_id)
+	if player == null:
+		return
+	var clamped: Array = []
+	for card_id in loadout:
+		if card_id in player.hand and not (card_id in clamped):
+			clamped.append(card_id)
+			if clamped.size() >= MatchConfig.MAX_LOADOUT_SIZE:
+				break
+	player.loadout = clamped
+	_send_rpc("_rpc_loadout_acknowledged", [peer_id, clamped])
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_loadout_acknowledged(peer_id: int, loadout: Array) -> void:
+	var player = state.find_player(peer_id)
+	if player != null:
+		player.loadout = loadout.duplicate()
+	loadout_acknowledged.emit(peer_id, loadout)
 
 func _phase_change_context() -> Dictionary:
 	return {
