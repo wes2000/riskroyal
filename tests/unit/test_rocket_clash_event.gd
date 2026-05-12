@@ -112,3 +112,20 @@ func test_double_cash_out_silently_dropped():
 	var first_count = d.fake.rpc_calls.size()
 	e._rpc_cash_out_requested(2, 2.0)  # second: silently dropped
 	assert_eq(d.fake.rpc_calls.size(), first_count, "duplicate cash-out silently dropped")
+
+func test_cash_out_button_press_dispatches_request():
+	var d = _new_host_event()
+	var e = d.event
+	e._force_crash_at_override = 5.0
+	e._run(_build_context(2, true))
+	# Simulate button press by calling the handler directly (no actual button click in unit test)
+	d.fake.rpc_calls.clear()
+	e._force_current_mult_for_testing = -1.0  # use real elapsed (will be near 1.0)
+	e._on_cash_out_button_pressed()
+	# Verify _rpc_cash_out_requested was broadcast with the host's peer_id
+	var found = false
+	for call in d.fake.rpc_calls:
+		if call.method == "_rpc_cash_out_requested":
+			found = true
+			break
+	assert_true(found, "button press should fire _rpc_cash_out_requested")

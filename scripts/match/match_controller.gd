@@ -147,7 +147,7 @@ func submit_wager(amount: int) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
 	_send_rpc("_rpc_set_wager", [my_peer_id, amount])
 
-@rpc("any_peer", "call_remote", "reliable")
+@rpc("any_peer", "call_local", "reliable")
 func _rpc_set_wager(peer_id: int, amount: int) -> void:
 	if not is_host:
 		return

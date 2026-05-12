@@ -36,6 +36,24 @@ const MatchConfig = preload("res://scripts/match/match_config.gd")
 func get_event_id() -> String:
 	return "rocket_clash"
 
+func _ready() -> void:
+	if _cash_out_button != null:
+		_cash_out_button.pressed.connect(_on_cash_out_button_pressed)
+
+func _on_cash_out_button_pressed() -> void:
+	# Local player wants to cash out. Snapshot the current multiplier and
+	# route through _rpc_cash_out_requested. With the C1 fix (call_local),
+	# the host's own click correctly dispatches to its own receiver too.
+	if _start_time_ms == 0 or _finished:
+		return  # rocket not running yet, or already crashed
+	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	if _cash_outs.has(my_peer_id):
+		return  # already cashed out
+	var elapsed_ms = Time.get_ticks_msec() - _start_time_ms
+	var growth = _growth_rate_override if _growth_rate_override >= 0.0 else MatchConfig.ROCKET_GROWTH_RATE
+	var snapshot = multiplier_at(elapsed_ms, growth)
+	_send_rpc("_rpc_cash_out_requested", [my_peer_id, snapshot])
+
 func _run(context) -> void:
 	_stashed_context = context
 	_is_host = context.is_host
@@ -130,7 +148,7 @@ func _current_multiplier_host() -> float:
 	var growth = _growth_rate_override if _growth_rate_override >= 0.0 else MatchConfig.ROCKET_GROWTH_RATE
 	return multiplier_at(elapsed_ms, growth)
 
-@rpc("any_peer", "call_remote", "reliable")
+@rpc("any_peer", "call_local", "reliable")
 func _rpc_cash_out_requested(peer_id: int, snapshot_mult: float) -> void:
 	if not _is_host:
 		return  # only host validates
