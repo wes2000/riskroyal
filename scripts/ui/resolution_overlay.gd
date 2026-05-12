@@ -70,10 +70,33 @@ static func format_resolution_step(step_name: String, payload: Dictionary) -> St
 				parts.append("P%d gets %d Crown" % [int(d.get("peer_id", 0)), int(d.get("delta", 0))])
 			return "Crowns: %s" % ", ".join(parts)
 		"painful_reveal":
-			var name = payload.get("winner_name", "")
-			var pid = payload.get("winner_peer_id", 0)
-			if name != "":
-				return "Painful reveal: %s wins the event." % name
-			return "Painful reveal: P%d wins." % pid
+			# Rocket Clash extended payload (also fits future events that follow
+			# the cash_outs_summary contract from spec section 11).
+			if payload.has("crash_at") and payload.has("cash_outs_summary"):
+				return _format_painful_reveal_rocket(payload)
+			# Existing TestEvent fallback (winner_peer_id + optional winner_name only)
+			var winner_name = payload.get("winner_name", "")
+			var winner_pid = payload.get("winner_peer_id", 0)
+			if winner_name != "":
+				return "Painful reveal: %s wins the event." % winner_name
+			return "Painful reveal: P%d wins." % winner_pid
 		_:
 			return "(%s)" % step_name
+
+static func _format_painful_reveal_rocket(payload: Dictionary) -> String:
+	var lines: Array = []
+	var crash_at = float(payload.get("crash_at", 1.0))
+	lines.append("CRASH! Rocket exploded at %.2fx" % crash_at)
+	var winner_pid = int(payload.get("winner_peer_id", 0))
+	var summary = payload.get("cash_outs_summary", [])
+	for entry in summary:
+		var name = String(entry.get("name", ""))
+		if entry.get("busted", false):
+			var wager = int(entry.get("wager", 0))
+			lines.append("  %s busted (left %d chips on the table)" % [name, wager])
+		else:
+			var cash_out = float(entry.get("cash_out_at", 0.0))
+			var chip_delta = int(entry.get("chip_delta", 0))
+			var crown = " 👑 Crown" if int(entry.get("peer_id", -1)) == winner_pid else ""
+			lines.append("  %s %.2fx +%d chips%s" % [name, cash_out, chip_delta, crown])
+	return "\n".join(lines)
