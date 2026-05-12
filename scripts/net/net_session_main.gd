@@ -28,8 +28,12 @@ func _ready() -> void:
 	_signaling.signal_received.connect(_transport.feed_remote_signal)
 	_transport.signal_to_send.connect(_signaling.send_signal)
 
-	# Wire MultiplayerAPI so Godot RPCs work once peers connect.
-	multiplayer.multiplayer_peer = _transport.get_multiplayer_peer()
+	# NOTE: multiplayer.multiplayer_peer is NOT set here. The WebRTCMultiplayerPeer
+	# is in STATE_DISCONNECTED at autoload time (create_server / create_client
+	# have not been called yet), and SceneMultiplayer rejects peers that are not
+	# CONNECTING or CONNECTED. The attachment is deferred to _process via
+	# _ensure_multiplayer_peer_attached() and happens once the transport has
+	# started (host_session -> start_host or _on_peer_id_assigned -> start_client).
 
 	# Route NetSession welcome / sync emissions to actual RPCs.
 	session.send_welcome_to.connect(_send_welcome)
@@ -43,10 +47,21 @@ func _ready() -> void:
 	session.notify_signaling_connected.connect(_signaling.notify_connected)
 
 func _process(_delta: float) -> void:
+	_ensure_multiplayer_peer_attached()
 	if _signaling != null:
 		_signaling.pump()
 	if _transport != null:
 		_transport.pump()
+
+func _ensure_multiplayer_peer_attached() -> void:
+	if _transport == null:
+		return
+	if multiplayer.multiplayer_peer != _transport.get_multiplayer_peer():
+		var peer = _transport.get_multiplayer_peer()
+		if peer != null:
+			var state = peer.get_connection_status()
+			if state == MultiplayerPeer.CONNECTION_CONNECTING or state == MultiplayerPeer.CONNECTION_CONNECTED:
+				multiplayer.multiplayer_peer = peer
 
 func _send_welcome(target_peer_id: int, payload: Dictionary) -> void:
 	rpc_id(target_peer_id, "_rpc_receive_welcome", payload)
