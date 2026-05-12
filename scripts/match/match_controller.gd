@@ -46,6 +46,28 @@ func start_match(match_start) -> void:
 func _set_phase(new_phase: int) -> void:
 	state.phase = new_phase
 	phase_changed.emit(new_phase)
+	_enter_phase_behavior()
+
+# Called on host when entering a phase to execute MVP behavior. Phases not
+# covered here are no-ops (handled by _advance_phase chaining alone).
+func _enter_phase_behavior() -> void:
+	if not is_host:
+		return
+	match state.phase:
+		MatchPhase.Phase.ANTE:
+			_process_ante_phase()
+		_:
+			pass
+
+func _process_ante_phase() -> void:
+	var ante = MatchConfig.ANTE_BY_EVENT_INDEX[state.event_index]
+	for p in state.players:
+		if p.chips >= ante:
+			p.chips -= ante
+			p.is_active_this_event = true
+			player_resources_changed.emit(p.peer_id)
+		else:
+			p.is_active_this_event = false
 
 # Internal: advance the phase machine. Each phase decides what to do next.
 # Real phase behavior (ANTE deduction, EVENT_SELECTION pick, MAIN_EVENT run,

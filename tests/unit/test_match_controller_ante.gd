@@ -1,0 +1,61 @@
+extends GutTest
+
+const MatchController = preload("res://scripts/match/match_controller.gd")
+const MatchPhase = preload("res://scripts/match/match_phase.gd")
+const MatchConfig = preload("res://scripts/match/match_config.gd")
+const MatchStart = preload("res://scripts/data/match_start.gd")
+const PlayerSlot = preload("res://scripts/data/player_slot.gd")
+
+func _build_match_start(player_count: int) -> RefCounted:
+	var ms = MatchStart.new()
+	for i in player_count:
+		var s = PlayerSlot.new()
+		s.peer_id = i + 1
+		s.seat_index = i
+		s.name = "P%d" % (i + 1)
+		ms.seats.append(s)
+	ms.host_peer_id = 1
+	ms.rng_seed = 1
+	return ms
+
+func _new_controller(player_count: int = 2) -> MatchController:
+	var c = MatchController.new(true, null)
+	c.start_match(_build_match_start(player_count))
+	return c
+
+func test_ante_deducts_chips_for_event_0():
+	var c = _new_controller(2)  # 800 starting chips
+	c.state.phase = MatchPhase.Phase.ANTE
+	c._enter_phase_behavior()
+	var ante = MatchConfig.ANTE_BY_EVENT_INDEX[0]
+	for p in c.state.players:
+		assert_eq(p.chips, 800 - ante, "ante deducted for event 0")
+		assert_true(p.is_active_this_event)
+
+func test_ante_uses_event_index_for_amount():
+	var c = _new_controller(2)
+	c.state.event_index = 4  # final event, ante 100
+	c.state.phase = MatchPhase.Phase.ANTE
+	c._enter_phase_behavior()
+	var ante = MatchConfig.ANTE_BY_EVENT_INDEX[4]
+	for p in c.state.players:
+		assert_eq(p.chips, 800 - ante)
+
+func test_ante_player_with_insufficient_chips_sits_out():
+	var c = _new_controller(2)
+	c.state.event_index = 4  # ante 100
+	c.state.players[0].chips = 50  # not enough
+	c.state.phase = MatchPhase.Phase.ANTE
+	c._enter_phase_behavior()
+	assert_eq(c.state.players[0].chips, 50, "no deduction")
+	assert_false(c.state.players[0].is_active_this_event)
+	assert_eq(c.state.players[1].chips, 800 - 100, "other player paid")
+	assert_true(c.state.players[1].is_active_this_event)
+
+func test_ante_emits_player_resources_changed_per_paying_player():
+	var c = _new_controller(2)
+	c.state.phase = MatchPhase.Phase.ANTE
+	var changed: Array = []
+	c.player_resources_changed.connect(func(pid): changed.append(pid))
+	c._enter_phase_behavior()
+	assert_eq(changed.size(), 2, "both players paid -> two emissions")
