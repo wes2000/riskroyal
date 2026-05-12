@@ -13,6 +13,11 @@ var current_result = null  # EventResult or null
 var rng_seed: int = 0
 var rng: RandomNumberGenerator = null
 var pending_wagers: Dictionary = {}
+var bounties: Array = []
+var current_shop_offer: Array = []
+var shop_done_peers: Array = []
+var event_modifiers: Dictionary = {}
+var pending_card_effects: Array = []
 
 func seed_rng() -> void:
 	rng = RandomNumberGenerator.new()
@@ -42,6 +47,11 @@ func to_dict() -> Dictionary:
 		"current_event_id": current_event_id,
 		"rng_seed": rng_seed,
 		"pending_wagers": pending_wagers.duplicate(true),
+		"bounties": bounties.duplicate(true),
+		"current_shop_offer": current_shop_offer.duplicate(),
+		"shop_done_peers": shop_done_peers.duplicate(),
+		"event_modifiers": event_modifiers.duplicate(true),
+		"pending_card_effects": pending_card_effects.duplicate(true),
 	}
 
 static func from_dict(d: Dictionary) -> RefCounted:
@@ -51,6 +61,11 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	s.current_event_id = d.get("current_event_id", "")
 	s.rng_seed = d.get("rng_seed", 0)
 	s.pending_wagers = d.get("pending_wagers", {}).duplicate(true)
+	s.bounties = d.get("bounties", []).duplicate(true)
+	s.current_shop_offer = d.get("current_shop_offer", []).duplicate()
+	s.shop_done_peers = d.get("shop_done_peers", []).duplicate()
+	s.event_modifiers = d.get("event_modifiers", {}).duplicate(true)
+	s.pending_card_effects = d.get("pending_card_effects", []).duplicate(true)
 	s.players = []
 	for raw in d.get("players", []):
 		s.players.append(MatchPlayer.from_dict(raw))
