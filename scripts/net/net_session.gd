@@ -216,6 +216,13 @@ func start_match() -> bool:
 	match_starting.emit(ms)
 	return true
 
+func return_to_lobby() -> void:
+	if not is_host:
+		return
+	if state != NetSessionState.State.MATCH:
+		return
+	_set_state(NetSessionState.State.LOBBY)
+
 func _on_peer_left(peer_id: int) -> void:
 	var slot = _find_slot(peer_id)
 	if slot == null:
