@@ -12,6 +12,7 @@ var session  # _NetSession
 var _signaling  # _SignalingClient
 var _transport  # _WebRTCTransport
 var _timer: Timer
+var _last_match_start = null
 
 func _ready() -> void:
 	_signaling = _SignalingClient.new()
@@ -33,6 +34,10 @@ func _ready() -> void:
 	# Route NetSession welcome / sync emissions to actual RPCs.
 	session.send_welcome_to.connect(_send_welcome)
 	session.sync_player_list_to_all.connect(_broadcast_player_list)
+
+	# Cache the MatchStart payload so the placeholder match scene can read it
+	# after the lobby transitions away.
+	session.match_starting.connect(_on_match_starting)
 
 	# Tell signaling when a P2P link is up so it can release relay slots.
 	session.notify_signaling_connected.connect(_signaling.notify_connected)
@@ -56,3 +61,9 @@ func _rpc_receive_welcome(payload: Dictionary) -> void:
 @rpc("any_peer", "reliable", "call_remote")
 func _rpc_sync_player_list(serialized_players: Array) -> void:
 	session.rpc_sync_player_list(serialized_players)
+
+func _on_match_starting(match_start) -> void:
+	_last_match_start = match_start
+
+func get_last_match_start():
+	return _last_match_start
