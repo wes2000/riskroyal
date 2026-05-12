@@ -14,6 +14,7 @@ signal event_starting(event_id: String, event_index: int)
 signal resolution_step(step_name: String, payload: Dictionary)
 signal match_ended(rankings: Array)
 signal player_resources_changed(peer_id: int)
+signal request_return_to_lobby
 
 var state: MatchState
 var is_host: bool = false
@@ -404,3 +405,43 @@ func return_to_lobby() -> void:
 	if not is_host:
 		return
 	_send_rpc("_rpc_return_to_lobby", [])
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_phase_changed(phase: int, ctx: Dictionary) -> void:
+	state.phase = phase
+	state.event_index = int(ctx.get("event_index", state.event_index))
+	state.current_event_id = String(ctx.get("current_event_id", state.current_event_id))
+	phase_changed.emit(phase)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_apply_deltas(deltas: Array) -> void:
+	for d in deltas:
+		var pid = int(d.get("peer_id", 0))
+		var p = state.find_player(pid)
+		if p == null:
+			continue
+		var chip_d = int(d.get("chip_delta", 0))
+		var crown_d = int(d.get("crown_delta", 0))
+		var heat_d = int(d.get("heat_delta", 0))
+		if chip_d != 0:
+			p.chips += chip_d
+		if crown_d != 0:
+			p.crowns += crown_d
+		if heat_d != 0:
+			p.heat = clamp(p.heat + heat_d, 0, MatchConfig.HEAT_MAX)
+		player_resources_changed.emit(pid)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_resolution_step(step_name: String, payload: Dictionary) -> void:
+	resolution_step.emit(step_name, payload)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_match_ended(serialized_rankings: Array) -> void:
+	var rankings: Array = []
+	for d in serialized_rankings:
+		rankings.append(MatchPlayer.from_dict(d))
+	match_ended.emit(rankings)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_return_to_lobby() -> void:
+	request_return_to_lobby.emit()
