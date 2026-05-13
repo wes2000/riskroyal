@@ -480,6 +480,19 @@ func _build_event_context():
 			ctx.wagers[p.peer_id] = ante
 	# Thread event_modifiers into the context so card effects + event runtime can read them.
 	ctx.event_modifiers = state.event_modifiers.duplicate(true)
+	# Sub-project #6 Plan A Task 8: thread house_twist + tuning_overrides
+	ctx.house_twist = state.house_twist.duplicate(true)
+	# tuning_overrides (Plan A wires infrastructure only; no Plan A twist
+	# uses this yet, but Plan B's Sudden Death may). If state.house_twist
+	# carries params.tuning_overrides, merge them into ctx.tuning AFTER
+	# the event populates defaults in _run.
+	# Note: the merge happens AFTER _run because event._run runs first
+	# (it's called by _process_main_event after _build_event_context).
+	# So we set a "pending overrides" key the event can read at end-of-_run,
+	# or we delay the merge. Cleanest: keep tuning_overrides in
+	# ctx.house_twist.params and let the event check it itself.
+	# For Plan A: no merge implementation; just the snapshot. Plan B may
+	# revisit.
 	return ctx
 
 func _on_event_complete(result) -> void:
