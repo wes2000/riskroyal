@@ -71,3 +71,11 @@ Run by launching two `godot --path .` windows on this machine.
 | 4 | Wager defaults to 0 on timeout | USER | One player ignores BET_LOADOUT; verify their event still runs with wager=0. |
 | 5 | Cash-out near crash | USER | Cash out within 0.1x of expected crash; verify host accepts within tolerance band. |
 | 6 | Five-event match with mixed wagers | USER | Full Quick Clash; chips and Heat update correctly across all 5 events; final rankings sensible. |
+
+## Sub-project #4 Plan B additions
+
+| # | Scenario | Pass criteria |
+|---|----------|---------------|
+| 6 | Cash-Out Jammer delays target's cash-out 750ms | Target tries to cash at 2.5x; their button press lags 750ms; resolved multiplier may differ from snapshot but stays within plus-or-minus 25% tolerance |
+| 7 | Emergency Eject auto-triggers at 3.0x | Player loads Emergency Eject in BET_LOADOUT; rocket reaches 3.0x without manual cash-out; auto-cash fires at 3.0x; chip gain reflects 3.0x times wager |
+| 8 | Place Bounty + bust target | Player A plays Place Bounty on Player B (150 chip cost); Player B busts in the rocket; bounty payout flows to whoever busted them (or unclaimed if B was sole busted) |
