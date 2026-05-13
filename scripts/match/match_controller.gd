@@ -799,7 +799,14 @@ func _rpc_card_play_requested(peer_id: int, card_id: String, target_peer_id: int
 	# For self-targeting cards, pass peer_id as target_peer_id; for target-required
 	# cards, pass the actual target_peer_id the caller specified.
 	var effect_target = peer_id if not card.get("target_required", false) else target_peer_id
-	var effect_result = CardRegistry.apply_card(card_id, ctx, effect_target, params)
+	# Inject caller_peer_id + event_index for caller-aware cards (Plan B:
+	# Wager Tax, Place Bounty, Copycat Bet). Pass-through any caller params.
+	var dispatch_params = {}
+	if params is Dictionary:
+		dispatch_params = params.duplicate()
+	dispatch_params["caller_peer_id"] = peer_id
+	dispatch_params["event_index"] = state.event_index
+	var effect_result = CardRegistry.apply_card(card_id, ctx, effect_target, dispatch_params)
 	if not effect_result.get("applied", false):
 		_send_rpc_to_peer(peer_id, "_rpc_card_play_rejected", [card_id, "effect_declined"])
 		return
@@ -859,6 +866,53 @@ func _apply_effect_result(effect: Dictionary, peer_id: int) -> void:
 			# _rpc_card_effect_applied -> this dispatcher; they must not re-broadcast.
 			if is_host:
 				_send_rpc("_rpc_wager_acknowledged", [peer_id, new_wager])
+		"post_event_heat_delta":
+			state.pending_card_effects.append({
+				"type": "heat_delta",
+				"target": int(effect.get("target", 0)),
+				"delta": int(effect.get("delta", 0)),
+			})
+		"post_event_wager_tax":
+			state.pending_card_effects.append({
+				"type": "wager_tax",
+				"source": int(effect.get("source", 0)),
+				"target": int(effect.get("target", 0)),
+			})
+		"place_bounty":
+			if is_host:
+				var b = Bounty.new()
+				b.origin = "placed"
+				b.target = int(effect.get("target", 0))
+				b.condition = "bust"
+				b.reward_chips = int(effect.get("reward_chips", MatchConfig.BOUNTY_BASE_REWARD))
+				b.placed_by = int(effect.get("placed_by", 0))
+				b.placed_at_event = int(effect.get("placed_at_event", state.event_index))
+				b.placed_at_target_heat = int(effect.get("placed_at_target_heat", 0))
+				state.bounties.append(b)
+				_send_rpc("_rpc_bounties_placed", [[b.to_dict()]])
+				bounty_placed.emit(b.to_dict())
+		"copycat_bet":
+			# Host: updates pending_wagers + broadcasts wager_acknowledged.
+			# Client mirror via _rpc_card_effect_applied: also updates
+			# pending_wagers; later receives wager_acknowledged broadcast
+			# which sets the same value (idempotent). Net effect consistent.
+			var caller = int(effect.get("source", peer_id))
+			var new_wager = int(effect.get("new_wager", 0))
+			state.pending_wagers[caller] = new_wager
+			if is_host:
+				_send_rpc("_rpc_wager_acknowledged", [caller, new_wager])
+		"cash_out_delay":
+			# Queue as pending effect; MatchController injects into the
+			# active RocketClashEvent before / during MAIN_EVENT (Task 11).
+			state.pending_card_effects.append({
+				"type": "cash_out_delay",
+				"target": int(effect.get("target", 0)),
+				"delay_ms": int(effect.get("delay_ms", 750)),
+			})
+		"auto_eject_loaded":
+			_ensure_modifiers(peer_id)
+			state.event_modifiers[peer_id]["auto_eject_loaded"] = true
+			state.event_modifiers[peer_id]["auto_eject_threshold"] = float(effect.get("threshold", 3.0))
 		_:
 			push_warning("Unhandled effect type: %s" % t)
 
