@@ -13,6 +13,7 @@ const CardRegistry = preload("res://scripts/cards/card_registry.gd")
 const CardEffectDispatcher = preload("res://scripts/match/card_effect_dispatcher.gd")
 const BountyResolver = preload("res://scripts/match/bounty_resolver.gd")
 const ShopController = preload("res://scripts/match/shop_controller.gd")
+const MatchRpcSender = preload("res://scripts/match/match_rpc_sender.gd")
 
 signal phase_changed(new_phase: int)
 signal event_starting(event_id: String, event_index: int)
@@ -37,6 +38,7 @@ signal shop_purchase_rejected(peer_id: int, card_id: String, reason: String)
 var state: MatchState
 var is_host: bool = false
 var _multiplayer_node = null  # for RPC routing in production; null in unit tests
+var _rpc_sender: MatchRpcSender = null
 
 # Test seam: override per-step delay to 0 for synchronous tests.
 # Plan A: declared for forward-compat; the synchronous pipeline below
@@ -116,6 +118,7 @@ func _clear_event_timeout_watchdog() -> void:
 func _init(p_is_host: bool = false, multiplayer_node = null) -> void:
 	is_host = p_is_host
 	_multiplayer_node = multiplayer_node
+	_rpc_sender = MatchRpcSender.new(multiplayer_node)
 	state = MatchState.new()
 	_event_factory = Callable(self, "_default_event_factory")
 
@@ -136,6 +139,7 @@ func start_match(match_start) -> void:
 	# _send_rpc continues to no-op.
 	if _multiplayer_node == null and is_inside_tree():
 		_multiplayer_node = self
+		_rpc_sender = MatchRpcSender.new(self)
 	# Build MatchPlayer records from MatchStart seats.
 	state.players = []
 	var player_count = match_start.seats.size()
@@ -156,31 +160,10 @@ func start_match(match_start) -> void:
 	_set_phase(MatchPhase.Phase.HOUSE_REVEAL)
 
 func _send_rpc(method_name: String, args: Array = []) -> void:
-	# Internal RPC sender. Routes through _multiplayer_node.rpc when non-null;
-	# no-ops in unit tests where _multiplayer_node is null.
-	if _multiplayer_node == null:
-		return
-	match args.size():
-		0: _multiplayer_node.rpc(method_name)
-		1: _multiplayer_node.rpc(method_name, args[0])
-		2: _multiplayer_node.rpc(method_name, args[0], args[1])
-		3: _multiplayer_node.rpc(method_name, args[0], args[1], args[2])
-		_:
-			push_error("MatchController._send_rpc: unsupported arity %d" % args.size())
+	_rpc_sender.send(method_name, args)
 
 func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array = []) -> void:
-	# Targeted RPC. Routes through _multiplayer_node.rpc_id when non-null;
-	# no-ops in unit tests where _multiplayer_node is null. FakeMultiplayerNode
-	# already records {method, peer_id, args} for rpc_id calls.
-	if _multiplayer_node == null:
-		return
-	match args.size():
-		0: _multiplayer_node.rpc_id(peer_id, method_name)
-		1: _multiplayer_node.rpc_id(peer_id, method_name, args[0])
-		2: _multiplayer_node.rpc_id(peer_id, method_name, args[0], args[1])
-		3: _multiplayer_node.rpc_id(peer_id, method_name, args[0], args[1], args[2])
-		_:
-			push_error("MatchController._send_rpc_to_peer: unsupported arity %d" % args.size())
+	_rpc_sender.send_to_peer(peer_id, method_name, args)
 
 # Public: called locally by BetLoadoutOverlay's Ready handler.
 func submit_loadout_change(loadout: Array) -> void:
