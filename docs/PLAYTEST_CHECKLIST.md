@@ -79,3 +79,15 @@ Run by launching two `godot --path .` windows on this machine.
 | 6 | Cash-Out Jammer delays target's cash-out 750ms | Target tries to cash at 2.5x; their button press lags 750ms; resolved multiplier may differ from snapshot but stays within plus-or-minus 25% tolerance |
 | 7 | Emergency Eject auto-triggers at 3.0x | Player loads Emergency Eject in BET_LOADOUT; rocket reaches 3.0x without manual cash-out; auto-cash fires at 3.0x; chip gain reflects 3.0x times wager |
 | 8 | Place Bounty + bust target | Player A plays Place Bounty on Player B (150 chip cost); Player B busts in the rocket; bounty payout flows to whoever busted them (or unclaimed if B was sole busted) |
+
+## Sub-project #5 additions
+
+| # | Scenario | Pass criteria |
+|---|----------|---------------|
+| 9 | Bomb Pot: pull out before bomb | All players see consistent pot growth; player pulls out at ~8s; locked share visible in painful_reveal; bomb fires at hidden time; remaining players bust |
+| 10 | Bomb Pot: last-puller wins Crown | 3 players; 2 pull out at 6s and 9s; 3rd at 12s; 3rd player receives crown_delta=1 + heat_delta=1 (or 0 with Heat Shield) |
+| 11 | Bomb Pot: instabust at 5s | Run match repeatedly; ~5% of Bomb Pot rounds detonate at exactly the 5s window; nobody can pull out in time -> all bust |
+| 12 | Card Cannon: lock at 21 wins triple payout | Player draws and locks at exactly 21; chip_delta = wager * 3.0; crown_delta=1 if highest |
+| 13 | Card Cannon: bust at 22+ loses wager | Player draws past 21; chip_delta = -wager; no Crown |
+| 14 | Card Cannon: Insurance halves bust | Player loads Insurance in BET_LOADOUT; busts in Card Cannon; chip_delta = -wager/2 |
+| 15 | 3-event rotation produces variety | 5-event Quick Clash visits at least 2 of the 3 events (uniform random; ~60% probability of all 3) |
