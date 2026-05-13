@@ -238,6 +238,22 @@ static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dic
 		if winner_mods.get("heat_shield", false):
 			heat_delta = int(heat_delta / 2)
 		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
+	# Sub-project #6 Plan B Task 8: Sudden Death Jackpot bonus crown.
+	# Each surviving puller whose pull-out timestamp >= 80% of bomb_at_sec
+	# earns +1 crown_delta. Stacks with the regular last-puller Crown.
+	# Sub-project #7: extract to EventHelpers.apply_sudden_death_bonus.
+	if context != null:
+		var ht = context.house_twist
+		if ht.get("type", "") == "sudden_death_jackpot" \
+				and String(ht.get("params", {}).get("condition", "")) == "pull_out_after_80_pct":
+			var threshold_ms = bomb_at_sec * 1000.0 * 0.80
+			for player in context.players:
+				var pid = player.peer_id
+				if not (pid in pulled_out_peers):
+					continue  # busts don't qualify
+				var ts = float(pull_out_timestamps.get(pid, 0))
+				if ts >= threshold_ms:
+					result.per_player[pid].crown_delta = int(result.per_player[pid].get("crown_delta", 0)) + 1
 	result.painful_reveal = {
 		"bomb_at_sec": bomb_at_sec,
 		"winner_peer_id": winner_peer_id,

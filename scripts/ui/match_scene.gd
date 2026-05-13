@@ -17,6 +17,7 @@ const ShopOverlayScene = preload("res://scenes/ui/shop_overlay.tscn")
 const BountyPanelScene = preload("res://scenes/ui/bounty_panel.tscn")
 const CashOutCardDrawerScene = preload("res://scenes/ui/cash_out_card_drawer.tscn")
 const HouseTwistOverlayScene = preload("res://scenes/ui/house_twist_overlay.tscn")
+const EventPickerOverlayScene = preload("res://scenes/ui/event_picker_overlay.tscn")
 const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 
 @onready var _player_panels: HBoxContainer = $VBox/PlayerPanels if has_node("VBox/PlayerPanels") else null
@@ -29,6 +30,7 @@ const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 @onready var _shop_slot: Container = $VBox/ShopSlot if has_node("VBox/ShopSlot") else null
 @onready var _bounty_slot: Container = $VBox/BountyPanelSlot if has_node("VBox/BountyPanelSlot") else null
 @onready var _house_twist_slot: Container = $VBox/HouseTwistSlot if has_node("VBox/HouseTwistSlot") else null
+@onready var _event_picker_slot: Container = $VBox/EventPickerSlot if has_node("VBox/EventPickerSlot") else null
 @onready var _cash_out_slot: Container = $VBox/CashOutSlot if has_node("VBox/CashOutSlot") else null
 @onready var _pause_overlay: PanelContainer = $PauseOverlay if has_node("PauseOverlay") else null
 
@@ -41,6 +43,7 @@ var _shop_overlay: Node = null
 var _bounty_panel: Node = null
 var _cash_out_drawer: Node = null
 var _house_twist_overlay: Node = null
+var _event_picker_overlay: Node = null
 
 func _ready() -> void:
 	if session == null and get_tree().root.has_node("NetSessionMain"):
@@ -68,6 +71,7 @@ func _ready() -> void:
 	_build_bounty_panel()
 	_build_cash_out_drawer()
 	_build_house_twist_overlay()
+	_build_event_picker_overlay()
 	if session.is_host:
 		controller.start_match(match_start)
 
@@ -206,6 +210,17 @@ func _build_house_twist_overlay() -> void:
 	_house_twist_overlay = HouseTwistOverlayScene.instantiate()
 	_house_twist_overlay.controller = controller
 	_house_twist_slot.add_child(_house_twist_overlay)
+
+func _build_event_picker_overlay() -> void:
+	if _event_picker_slot == null:
+		return
+	_event_picker_overlay = EventPickerOverlayScene.instantiate()
+	# CRITICAL: set controller + local_player BEFORE add_child so the
+	# overlay's _ready() sees non-null controller for signal connection.
+	# Mirrors _build_house_twist_overlay + Plan A Task 16's pattern.
+	_event_picker_overlay.controller = controller
+	_event_picker_overlay.local_player = _find_local_player()
+	_event_picker_slot.add_child(_event_picker_overlay)
 
 # Static formatter (testable). Takes total_events as a parameter so the
 # caller chooses the count (production passes MatchConfig.QUICK_CLASH_EVENT_COUNT).

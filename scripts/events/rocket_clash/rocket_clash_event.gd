@@ -311,6 +311,21 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 		if winner_mods.get("heat_shield", false):
 			heat_delta = int(heat_delta / 2)  # Heat Shield halves heat_delta (1 -> 0)
 		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
+	# Sub-project #6 Plan B Task 7: Sudden Death Jackpot bonus crown.
+	# Each surviving player whose cash_out > 5.0 earns +1 crown_delta
+	# (stacks with regular Crown — only place where crown_delta = 2).
+	# Sub-project #7: extract to EventHelpers.apply_sudden_death_bonus.
+	if context != null:
+		var ht = context.house_twist
+		if ht.get("type", "") == "sudden_death_jackpot" \
+				and String(ht.get("params", {}).get("condition", "")) == "cash_out_over_5x":
+			for player in context.players:
+				var pid = player.peer_id
+				if busted.has(pid):
+					continue
+				var co = float(cash_outs.get(pid, 0.0))
+				if co > 5.0:
+					result.per_player[pid].crown_delta = int(result.per_player[pid].get("crown_delta", 0)) + 1
 	result.painful_reveal = {
 		"crash_at": crash_at,
 		"winner_peer_id": winner_peer_id,

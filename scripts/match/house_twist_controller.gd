@@ -8,6 +8,7 @@
 extends Object
 
 const CardRegistry = preload("res://scripts/cards/card_registry.gd")
+const MatchConfig = preload("res://scripts/match/match_config.gd")
 
 # Full 6-twist pool. Plan A implements 4 (double_bounty, no_insurance,
 # leader_cursed, power_surge); Plan B adds lowest_chips_picks + sudden_death_jackpot.
@@ -20,22 +21,12 @@ const TWIST_POOL: Array = [
 	"sudden_death_jackpot",
 ]
 
-# Plan A subset: only the 4 twists with full consumer wiring. Plan B
-# will widen selection back to TWIST_POOL when it adds consumers for
-# lowest_chips_picks + sudden_death_jackpot.
-const PLAN_A_TWISTS: Array = [
-	"double_bounty",
-	"no_insurance",
-	"leader_cursed",
-	"power_surge",
-]
-
 # Picks the next twist uniformly from the pool, with no-repeat filter
 # (excludes state.last_twist_type) and degenerate-case filters
 # (lowest_chips_picks + leader_cursed excluded when all peers have
 # equal chips).
 static func select_next_twist(state) -> Dictionary:
-	var pool = PLAN_A_TWISTS.duplicate()
+	var pool = TWIST_POOL.duplicate()
 	# No-repeat filter
 	if state.last_twist_type != "":
 		pool.erase(state.last_twist_type)
@@ -45,7 +36,7 @@ static func select_next_twist(state) -> Dictionary:
 		pool.erase("leader_cursed")
 	# Defensive: fall back to full pool if filters emptied the candidates
 	if pool.is_empty():
-		pool = PLAN_A_TWISTS.duplicate()
+		pool = TWIST_POOL.duplicate()
 	var idx = state.rng.randi() % pool.size()
 	var twist_type = pool[idx]
 	return {
@@ -75,8 +66,11 @@ static func compute_twist_params(twist_type: String, state) -> Dictionary:
 			# cards_dealt populated by apply_pre_event_effects below
 			return {"cards_dealt": {}}
 		"lowest_chips_picks":
-			# Plan B will populate picker_peer_id + options
-			return {"timeout_sec": 10}
+			return {
+				"picker_peer_id": _find_lowest_chips_peer_id(state),
+				"options": _shuffled_event_pool(state),
+				"timeout_sec": 10,
+			}
 		"sudden_death_jackpot":
 			# Plan B will populate condition (lazy per the spec § 7.6)
 			return {"condition": ""}
@@ -102,6 +96,31 @@ static func apply_pre_event_effects(state, twist: Dictionary) -> void:
 				p.hand.append(card_id)  # intentionally bypasses MAX_HAND_SIZE
 				cards_dealt[p.peer_id] = card_id
 			twist["params"]["cards_dealt"] = cards_dealt
+
+# Lazy condition resolution for Sudden Death Jackpot. Called by
+# MatchController._process_event_selection AFTER state.current_event_id
+# is set. Maps event scene path → condition string per spec § 7.6 and
+# rewrites state.house_twist.params.condition in-place. No-op for all
+# other twist types (defensive).
+static func finalize_pending_params(state) -> void:
+	if state.house_twist.get("type", "") != "sudden_death_jackpot":
+		return
+	var event_id = String(state.current_event_id)
+	var condition = ""
+	if event_id.ends_with("rocket_clash_event.tscn"):
+		condition = "cash_out_over_5x"
+	elif event_id.ends_with("bomb_pot_event.tscn"):
+		condition = "pull_out_after_80_pct"
+	elif event_id.ends_with("card_cannon_event.tscn"):
+		condition = "locked_at_perfect"
+	else:
+		push_warning("HouseTwistController.finalize_pending_params: unknown event_id %s" % event_id)
+		return
+	# Mutate the params dict in-place; caller (MatchController) broadcasts
+	# the updated dict via _rpc_house_twist_params_updated.
+	if not state.house_twist.has("params"):
+		state.house_twist["params"] = {}
+	state.house_twist["params"]["condition"] = condition
 
 # Helpers
 
@@ -130,3 +149,29 @@ static func _find_chip_leader_peer_id(state) -> int:
 		elif p.chips == leader.chips and p.seat_index < leader.seat_index:
 			leader = p  # seat_index tie-break
 	return leader.peer_id
+
+# Lowest-chips player with deterministic tie-break by lower seat_index.
+# Mirror-shape with _find_chip_leader_peer_id but minimizing instead of
+# maximizing. Sub-project #7 may consolidate the two into a single helper
+# with a tie-break/direction flag.
+static func _find_lowest_chips_peer_id(state) -> int:
+	if state.players.is_empty():
+		return 0
+	var lowest = state.players[0]
+	for p in state.players:
+		if p.chips < lowest.chips:
+			lowest = p
+		elif p.chips == lowest.chips and p.seat_index < lowest.seat_index:
+			lowest = p  # seat_index tie-break
+	return lowest.peer_id
+
+# Fisher-Yates shuffle of MatchConfig.EVENT_POOL using state.rng for
+# determinism. Returns a new Array — does not mutate the const.
+static func _shuffled_event_pool(state) -> Array:
+	var arr = MatchConfig.EVENT_POOL.duplicate()
+	for i in range(arr.size() - 1, 0, -1):
+		var j = state.rng.randi() % (i + 1)
+		var tmp = arr[i]
+		arr[i] = arr[j]
+		arr[j] = tmp
+	return arr

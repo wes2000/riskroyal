@@ -36,6 +36,8 @@ signal shop_closed
 signal shop_purchase_confirmed(peer_id: int, card_id: String, cost_chips: int)
 signal shop_purchase_rejected(peer_id: int, card_id: String, reason: String)
 signal house_twist_announced(twist_dict: Dictionary)
+signal event_picker_started(picker_peer_id: int, options: Array)
+signal event_picker_resolved(chosen_path: String, reason: String)
 
 var state: MatchState
 var is_host: bool = false
@@ -77,6 +79,10 @@ var bet_loadout_timeout_sec_override: float = -1.0
 # Negative = use MatchConfig.SHOP_TIMEOUT_SEC. 0.0 = synchronous open, no auto-close.
 var shop_timeout_sec_override: float = -1.0
 
+# Test seam: override EVENT_PICKER phase timeout. -1 = use MatchConfig.
+# 0.0 = bypass timer entirely (synchronous host fallback).
+var event_picker_timeout_sec_override: float = -1.0
+
 func _default_event_factory(path: String):
 	var ps = load(path)
 	if ps == null:
@@ -97,6 +103,11 @@ func _shop_timeout_sec() -> float:
 	if shop_timeout_sec_override >= 0.0:
 		return shop_timeout_sec_override
 	return float(MatchConfig.SHOP_TIMEOUT_SEC)
+
+func _event_picker_timeout_sec() -> float:
+	if event_picker_timeout_sec_override >= 0.0:
+		return event_picker_timeout_sec_override
+	return float(MatchConfig.EVENT_PICKER_TIMEOUT_SEC)
 
 func _start_event_timeout_watchdog() -> void:
 	if not is_inside_tree():
@@ -157,6 +168,13 @@ func start_match(match_start) -> void:
 	state.rng_seed = match_start.rng_seed
 	state.seed_rng()
 	state.event_index = 0
+	# Sub-project #6 Plan B Task 1: defensive reset of twist + event-pool
+	# tracking. Production never reuses a controller instance, but this
+	# closes the Plan A carry-forward documented in
+	# project_riskroyal_followups.md.
+	state.house_twist = {}
+	state.last_twist_type = ""
+	state.previous_event_id = ""
 	# Deal starter pack of 3 random commons (excluding sabotage)
 	_deal_starter_pack()
 	_set_phase(MatchPhase.Phase.HOUSE_REVEAL)
@@ -179,6 +197,12 @@ func submit_card_play(card_id: String, target_peer_id: int = 0, params = null) -
 func submit_wager(amount: int) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
 	_send_rpc("_rpc_set_wager", [my_peer_id, amount])
+
+# Public: called locally by EventPickerOverlay button presses on the
+# picker peer.
+func submit_event_pick(chosen_path: String) -> void:
+	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	_send_rpc("_rpc_event_picker_choice", [my_peer_id, chosen_path])
 
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_set_wager(peer_id: int, amount: int) -> void:
@@ -254,7 +278,7 @@ func _enter_phase_behavior() -> void:
 			_process_ante_phase()
 			await _schedule_advance()
 		MatchPhase.Phase.EVENT_SELECTION:
-			_process_event_selection()
+			await _process_event_selection()
 			await _schedule_advance()
 		MatchPhase.Phase.BET_LOADOUT:
 			await _process_bet_loadout()
@@ -295,18 +319,87 @@ func _process_ante_phase() -> void:
 		_send_rpc("_rpc_apply_deltas", [deltas])
 
 func _process_event_selection() -> void:
-	# Plan B will add: if state.house_twist.type == "lowest_chips_picks":
-	#   defer to async picker flow.
-	# Plan A: uniform random with no-repeat filter (sub-project #5 carry-forward).
+	# Plan B Task 4: defer to async picker flow when the twist is active.
+	if state.house_twist.get("type", "") == "lowest_chips_picks":
+		await _process_event_selection_with_picker()
+		return
+	# Plan A path: uniform random with no-repeat filter.
+	_select_event_with_no_repeat()
+	HouseTwistController.finalize_pending_params(state)
+	_broadcast_sudden_death_finalized()
+
+# Plan B Task 6: broadcast updated twist params after finalize_pending_params.
+# Skipped unless the active twist is Sudden Death (avoids a round-trip for
+# every event-selection in non-Sudden-Death rounds).
+func _broadcast_sudden_death_finalized() -> void:
+	if state.house_twist.get("type", "") != "sudden_death_jackpot":
+		return
+	if not is_host:
+		return
+	_send_rpc("_rpc_house_twist_params_updated", [state.house_twist.params])
+
+# Plan B Task 6: client mirror for late-bind condition resolution.
+# Replaces state.house_twist.params with the broadcast copy.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_house_twist_params_updated(params: Dictionary) -> void:
+	if state.house_twist.is_empty():
+		return  # defensive: shouldn't happen, but tolerate
+	state.house_twist["params"] = params.duplicate(true)
+
+func _select_event_with_no_repeat() -> void:
 	var pool = MatchConfig.EVENT_POOL.duplicate()
 	if not state.previous_event_id.is_empty():
 		pool.erase(state.previous_event_id)
-		# Defensive: fall back to full pool if filter emptied candidates
 		if pool.is_empty():
 			pool = MatchConfig.EVENT_POOL.duplicate()
 	var idx = state.rng.randi() % pool.size()
 	state.current_event_id = pool[idx]
 	state.previous_event_id = state.current_event_id
+
+# Plan B Task 4: Lowest Chips Picks async picker flow.
+# Host broadcasts picker UI start, awaits choice OR 10-second timeout,
+# falls back to uniform-random pick from options on timeout. The host
+# ALWAYS sets state.current_event_id before returning so the phase
+# machine advances cleanly.
+func _process_event_selection_with_picker() -> void:
+	if not is_host:
+		return
+	var picker_peer_id = int(state.house_twist.params.get("picker_peer_id", 0))
+	var options: Array = state.house_twist.params.get("options", [])
+	if options.is_empty():
+		# Defensive: no options to pick from. Fall back to Plan A path.
+		_select_event_with_no_repeat()
+		HouseTwistController.finalize_pending_params(state)
+		_broadcast_sudden_death_finalized()
+		return
+	_send_rpc("_rpc_event_picker_started", [picker_peer_id, options])
+	# Clear any stale prior pick
+	state.current_event_id = ""
+	var timeout_sec = _event_picker_timeout_sec()
+	if timeout_sec <= 0.0:
+		# Synchronous test path: skip the await entirely, fall through to
+		# fallback. Tests can also pre-submit a choice via _rpc_event_picker_choice
+		# before calling _process_event_selection if they want the happy path.
+		pass
+	elif not is_inside_tree():
+		# Detached controller (some tests): no SceneTree for timer.
+		pass
+	else:
+		var timer = get_tree().create_timer(timeout_sec)
+		while timer.time_left > 0.0:
+			if not state.current_event_id.is_empty():
+				break  # picker submitted; _rpc_event_picker_choice set the id
+			await get_tree().process_frame
+	# Host fallback if no pick landed
+	var reason = "submitted"
+	if state.current_event_id.is_empty():
+		var idx = state.rng.randi() % options.size()
+		state.current_event_id = options[idx]
+		reason = "timeout"
+	state.previous_event_id = state.current_event_id
+	HouseTwistController.finalize_pending_params(state)
+	_broadcast_sudden_death_finalized()
+	_send_rpc("_rpc_event_picker_resolved", [state.current_event_id, reason])
 
 func _process_bet_loadout() -> void:
 	if not is_host:
@@ -437,6 +530,43 @@ func _rpc_shop_purchase_confirmed(peer_id: int, card_id: String, cost_chips: int
 @rpc("authority", "call_remote", "reliable")
 func _rpc_shop_buy_rejected(card_id: String, reason: String) -> void:
 	shop_purchase_rejected.emit(0, card_id, reason)
+
+# Plan B Task 5: picker UI start broadcast. Receives on all peers;
+# picker peer's overlay shows buttons, non-pickers see a passive
+# waiting banner. Re-emits a local signal for EventPickerOverlay.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_event_picker_started(picker_peer_id: int, options: Array) -> void:
+	event_picker_started.emit(picker_peer_id, options)
+
+# Plan B Task 5: picker submits a choice. Host validates: must be the
+# correct picker peer AND chosen_path must be in options. Silent reject
+# on bad submit (the UI should not have shown buttons for invalid
+# options); duplicate submits ignored because state.current_event_id
+# is locked after the first valid pick.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_event_picker_choice(peer_id: int, chosen_path: String) -> void:
+	if not is_host:
+		return
+	if state.house_twist.get("type", "") != "lowest_chips_picks":
+		return  # twist already resolved or never active
+	if not state.current_event_id.is_empty():
+		return  # already locked (duplicate submit or timeout fired first)
+	var picker_peer_id = int(state.house_twist.params.get("picker_peer_id", 0))
+	if peer_id != picker_peer_id:
+		return  # non-picker submission rejected
+	var options: Array = state.house_twist.params.get("options", [])
+	if not options.has(chosen_path):
+		return  # invalid option rejected
+	state.current_event_id = chosen_path
+
+# Plan B Task 5: resolution broadcast. All peers receive the final
+# picked event_id + reason (either "submitted" or "timeout") so the
+# EventPickerOverlay can dismiss with the right message.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_event_picker_resolved(chosen_path: String, reason: String) -> void:
+	state.current_event_id = chosen_path
+	state.previous_event_id = chosen_path
+	event_picker_resolved.emit(chosen_path, reason)
 
 @rpc("authority", "call_remote", "reliable")
 func _rpc_house_twist_announced(twist_dict: Dictionary) -> void:

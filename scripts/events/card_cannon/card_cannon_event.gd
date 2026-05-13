@@ -252,6 +252,20 @@ static func compute_event_result(context, hands: Dictionary, locked_scores: Dict
 		if winner_mods.get("heat_shield", false):
 			heat_delta = int(heat_delta / 2)
 		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
+	# Sub-project #6 Plan B Task 9: Sudden Death Jackpot bonus crown.
+	# Each surviving player whose locked score equals exactly 21 earns
+	# +1 crown_delta. Stacks with the regular highest-locked-score
+	# Crown. Sub-project #7: extract to EventHelpers.apply_sudden_death_bonus.
+	if context != null:
+		var ht = context.house_twist
+		if ht.get("type", "") == "sudden_death_jackpot" \
+				and String(ht.get("params", {}).get("condition", "")) == "locked_at_perfect":
+			for player in context.players:
+				var pid = player.peer_id
+				if busted.get(pid, false):
+					continue
+				if int(locked_scores.get(pid, 0)) == 21:
+					result.per_player[pid].crown_delta = int(result.per_player[pid].get("crown_delta", 0)) + 1
 	result.painful_reveal = {
 		"winner_peer_id": winner_peer_id,
 		"winner_score": winner_score,

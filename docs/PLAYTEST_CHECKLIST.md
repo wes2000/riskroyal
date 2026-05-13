@@ -102,3 +102,14 @@ Run by launching two `godot --path .` windows on this machine.
 | 19 | Power Surge deals bonus cards | Every active peer receives +1 random non-sabotage common card at HOUSE_TWIST; the announce broadcast _rpc_house_twist_announced carries params.cards_dealt {peer_id → card_id}; each client mirrors the card into MatchPlayer.hand |
 | 20 | No-repeat event selection | Across a 5-event Quick Clash, no two consecutive events share the same event_id |
 | 21 | No twist on event 1 | First event's HOUSE_REVEAL sees state.house_twist == {} (no twist banner shown) |
+
+## Sub-project #6 Plan B additions
+
+| # | Scenario | Pass criteria |
+|---|----------|---------------|
+| 22 | Lowest Chips Picks: picker UI on lowest-chips peer | At HOUSE_TWIST → EVENT_SELECTION, the lowest-chips player's screen shows EventPickerOverlay with 3 buttons (Rocket Clash / Bomb Pot / Card Cannon); other peers see "Waiting for P<n> to pick the next event..." |
+| 23 | Lowest Chips Picks: pick propagates | Picker clicks one of the 3 buttons → all peers' state.current_event_id matches the picked path; EventPickerOverlay hides; MAIN_EVENT loads the chosen event |
+| 24 | Lowest Chips Picks: 10s timeout fallback | Picker does nothing for 10 seconds → host picks uniformly from options + broadcasts _rpc_event_picker_resolved with reason="timeout"; toast or banner mentions the timeout |
+| 25 | Sudden Death + Rocket Clash: cash_out_over_5x | Twist announced (state.house_twist.type == "sudden_death_jackpot"); after EVENT_SELECTION picks Rocket Clash, state.house_twist.params.condition == "cash_out_over_5x"; any survivor who cashes > 5.0× earns +1 crown_delta (stacks with regular Crown to 2 if they also win highest cash-out) |
+| 26 | Sudden Death + Bomb Pot: pull_out_after_80_pct | Same flow → condition = "pull_out_after_80_pct"; pullers whose pull-out timestamp >= 80% of bomb-time earn +1 crown_delta |
+| 27 | Sudden Death + Card Cannon: locked_at_perfect | Same flow → condition = "locked_at_perfect"; any survivor who locks exactly 21 earns +1 crown_delta |
