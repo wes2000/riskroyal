@@ -20,6 +20,8 @@ text = "Loading match..."
 
 [node name="HouseTwistSlot" type="Container" parent="VBox"]
 
+[node name="EventPickerSlot" type="Container" parent="VBox"]
+
 [node name="BetLoadoutSlot" type="Container" parent="VBox"]
 
 [node name="LoadoutSlot" type="Container" parent="VBox"]
