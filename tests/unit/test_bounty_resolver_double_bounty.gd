@@ -39,3 +39,19 @@ func test_resolve_no_double_bounty_unchanged():
 	r.per_player[2] = {"chip_delta": 100, "bust": false, "crown_delta": 0, "heat_delta": 0, "cash_out_at": 2.0}
 	var awards = BountyResolver.resolve(s, r)
 	assert_eq(awards[0].reward_chips, 150, "no twist: base reward unchanged")
+	assert_eq(s.players[1].chips, 650, "claimant chips updated in state (500 base + 150 reward)")
+
+func test_resolve_empty_house_twist_does_not_crash():
+	# Regression guard: state.house_twist = {} is reachable (cleanup path
+	# in match_controller). The defensive .get("params", {}) chain prevents
+	# a crash; this test locks in that behavior.
+	var s = _new_state_with_2_players()
+	var b = Bounty.new()
+	b.origin = "leader"; b.target = 1; b.condition = "bust"; b.reward_chips = 150
+	s.bounties = [b]
+	s.house_twist = {}  # cleared/no-twist state
+	var r = EventResult.new()
+	r.per_player[1] = {"chip_delta": -100, "bust": true, "crown_delta": 0, "heat_delta": 0, "cash_out_at": 0.0}
+	r.per_player[2] = {"chip_delta": 100, "bust": false, "crown_delta": 0, "heat_delta": 0, "cash_out_at": 2.0}
+	var awards = BountyResolver.resolve(s, r)
+	assert_eq(awards[0].reward_chips, 150, "empty house_twist: base reward unchanged, no crash")
