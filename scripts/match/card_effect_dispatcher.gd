@@ -16,6 +16,9 @@ static func apply(state, peer_id: int, effect: Dictionary, is_host: bool) -> voi
 	var t = effect.get("type", "")
 	match t:
 		"insurance_pre":
+			# Sub-project #6 Plan A: No Insurance twist short-circuits.
+			if state.house_twist.get("type", "") == "no_insurance":
+				return
 			_ensure_modifiers(state, peer_id)
 			state.event_modifiers[peer_id]["insurance_pre"] = true
 		"heat_shield":

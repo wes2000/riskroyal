@@ -822,6 +822,10 @@ func _rpc_card_play_requested(peer_id: int, card_id: String, target_peer_id: int
 	if card.get("target_required", false) and target_peer_id == 0:
 		_send_rpc_to_peer(peer_id, "_rpc_card_play_rejected", [card_id, "target_required"])
 		return
+	# Sub-project #6 Plan A: No Insurance twist gates the Insurance card.
+	if card_id == "insurance" and state.house_twist.get("type", "") == "no_insurance":
+		_send_rpc_to_peer(peer_id, "_rpc_card_play_rejected", [card_id, "no_insurance_twist"])
+		return
 	var ctx = _build_event_context()
 	# For self-targeting cards, pass peer_id as target_peer_id; for target-required
 	# cards, pass the actual target_peer_id the caller specified.
