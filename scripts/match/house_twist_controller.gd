@@ -8,6 +8,7 @@
 extends Object
 
 const CardRegistry = preload("res://scripts/cards/card_registry.gd")
+const MatchConfig = preload("res://scripts/match/match_config.gd")
 
 # Full 6-twist pool. Plan A implements 4 (double_bounty, no_insurance,
 # leader_cursed, power_surge); Plan B adds lowest_chips_picks + sudden_death_jackpot.
@@ -65,8 +66,11 @@ static func compute_twist_params(twist_type: String, state) -> Dictionary:
 			# cards_dealt populated by apply_pre_event_effects below
 			return {"cards_dealt": {}}
 		"lowest_chips_picks":
-			# Plan B will populate picker_peer_id + options
-			return {"timeout_sec": 10}
+			return {
+				"picker_peer_id": _find_lowest_chips_peer_id(state),
+				"options": _shuffled_event_pool(state),
+				"timeout_sec": 10,
+			}
 		"sudden_death_jackpot":
 			# Plan B will populate condition (lazy per the spec § 7.6)
 			return {"condition": ""}
@@ -120,3 +124,29 @@ static func _find_chip_leader_peer_id(state) -> int:
 		elif p.chips == leader.chips and p.seat_index < leader.seat_index:
 			leader = p  # seat_index tie-break
 	return leader.peer_id
+
+# Lowest-chips player with deterministic tie-break by lower seat_index.
+# Mirror-shape with _find_chip_leader_peer_id but minimizing instead of
+# maximizing. Sub-project #7 may consolidate the two into a single helper
+# with a tie-break/direction flag.
+static func _find_lowest_chips_peer_id(state) -> int:
+	if state.players.is_empty():
+		return 0
+	var lowest = state.players[0]
+	for p in state.players:
+		if p.chips < lowest.chips:
+			lowest = p
+		elif p.chips == lowest.chips and p.seat_index < lowest.seat_index:
+			lowest = p  # seat_index tie-break
+	return lowest.peer_id
+
+# Fisher-Yates shuffle of MatchConfig.EVENT_POOL using state.rng for
+# determinism. Returns a new Array — does not mutate the const.
+static func _shuffled_event_pool(state) -> Array:
+	var arr = MatchConfig.EVENT_POOL.duplicate()
+	for i in range(arr.size() - 1, 0, -1):
+		var j = state.rng.randi() % (i + 1)
+		var tmp = arr[i]
+		arr[i] = arr[j]
+		arr[j] = tmp
+	return arr
