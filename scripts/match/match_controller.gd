@@ -325,9 +325,26 @@ func _process_event_selection() -> void:
 		return
 	# Plan A path: uniform random with no-repeat filter.
 	_select_event_with_no_repeat()
-	# Sub-project #6 Plan B Task 6 will add finalize_pending_params here
-	# (so Sudden Death's condition gets resolved); placeholder hook below.
 	HouseTwistController.finalize_pending_params(state)
+	_broadcast_sudden_death_finalized()
+
+# Plan B Task 6: broadcast updated twist params after finalize_pending_params.
+# Skipped unless the active twist is Sudden Death (avoids a round-trip for
+# every event-selection in non-Sudden-Death rounds).
+func _broadcast_sudden_death_finalized() -> void:
+	if state.house_twist.get("type", "") != "sudden_death_jackpot":
+		return
+	if not is_host:
+		return
+	_send_rpc("_rpc_house_twist_params_updated", [state.house_twist.params])
+
+# Plan B Task 6: client mirror for late-bind condition resolution.
+# Replaces state.house_twist.params with the broadcast copy.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_house_twist_params_updated(params: Dictionary) -> void:
+	if state.house_twist.is_empty():
+		return  # defensive: shouldn't happen, but tolerate
+	state.house_twist["params"] = params.duplicate(true)
 
 func _select_event_with_no_repeat() -> void:
 	var pool = MatchConfig.EVENT_POOL.duplicate()
@@ -353,6 +370,7 @@ func _process_event_selection_with_picker() -> void:
 		# Defensive: no options to pick from. Fall back to Plan A path.
 		_select_event_with_no_repeat()
 		HouseTwistController.finalize_pending_params(state)
+		_broadcast_sudden_death_finalized()
 		return
 	_send_rpc("_rpc_event_picker_started", [picker_peer_id, options])
 	# Clear any stale prior pick
@@ -380,6 +398,7 @@ func _process_event_selection_with_picker() -> void:
 		reason = "timeout"
 	state.previous_event_id = state.current_event_id
 	HouseTwistController.finalize_pending_params(state)
+	_broadcast_sudden_death_finalized()
 	_send_rpc("_rpc_event_picker_resolved", [state.current_event_id, reason])
 
 func _process_bet_loadout() -> void:
