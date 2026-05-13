@@ -1992,7 +1992,7 @@ Sub-project #5 complete. Risk Royal MVP now has 3 events:
 **Cumulative state after merge:**
 - 12 power cards (sub-project #4), full bounty system, SHOP phase, 6 HUD widgets, 4-collaborator MatchController split
 - 3 events: Rocket Clash (#3), Bomb Pot (#5), Card Cannon (#5)
-- Test suite: ~504 unit + 5 integration (453 baseline + ~39 new unit + 1 integration)
+- Test suite: 504 unit + 5 integration (453 baseline + 51 new unit + 1 new integration)
 
 **Tag after Plan merges:** `subproject-5-complete`.
 

@@ -62,6 +62,11 @@ func submit_lock() -> void:
 func _run(context) -> void:
 	_stashed_context = context
 	_is_host = context.is_host
+	# Self-wire _multiplayer_node when in-tree and not explicitly injected
+	# (e.g. by tests). Matches RocketClashEvent's pattern so production RPC
+	# routing works whenever MatchController adds the event to the scene tree.
+	if _multiplayer_node == null and is_inside_tree():
+		_multiplayer_node = self
 	# Derive a per-event RNG from context.rng_seed (EventContext exposes
 	# rng_seed, not rng). Storing as an instance field so successive draws
 	# advance the same sequence — same pattern as RocketClashEvent.

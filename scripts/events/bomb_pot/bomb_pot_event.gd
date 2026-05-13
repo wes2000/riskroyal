@@ -54,6 +54,11 @@ func submit_pull_out() -> void:
 func _run(context) -> void:
 	_stashed_context = context
 	_is_host = context.is_host
+	# Self-wire _multiplayer_node when in-tree and not explicitly injected
+	# (e.g. by tests). Matches RocketClashEvent's pattern so production RPC
+	# routing works whenever MatchController adds the event to the scene tree.
+	if _multiplayer_node == null and is_inside_tree():
+		_multiplayer_node = self
 	_active_peers = []
 	for p in context.players:
 		if p.is_active_this_event:
