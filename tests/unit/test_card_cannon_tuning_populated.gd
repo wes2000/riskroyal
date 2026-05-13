@@ -13,5 +13,8 @@ func test_run_populates_ctx_tuning_with_defaults():
 	assert_eq(int(ctx.tuning.get("target_score", 0)), MatchConfig.CARD_CANNON_TARGET_SCORE)
 	var bands = ctx.tuning.get("payout_bands", {})
 	assert_almost_eq(float(bands.get("low", 0.0)), MatchConfig.CARD_CANNON_PAYOUT_BAND_LOW, 0.001)
+	assert_almost_eq(float(bands.get("medium", 0.0)), MatchConfig.CARD_CANNON_PAYOUT_BAND_MEDIUM, 0.001)
+	assert_almost_eq(float(bands.get("strong", 0.0)), MatchConfig.CARD_CANNON_PAYOUT_BAND_STRONG, 0.001)
+	assert_almost_eq(float(bands.get("heavy", 0.0)), MatchConfig.CARD_CANNON_PAYOUT_BAND_HEAVY, 0.001)
 	assert_almost_eq(float(bands.get("perfect", 0.0)), MatchConfig.CARD_CANNON_PAYOUT_BAND_PERFECT, 0.001)
 	e.free()
