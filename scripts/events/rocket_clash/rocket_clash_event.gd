@@ -57,6 +57,11 @@ func _on_cash_out_button_pressed() -> void:
 
 func _run(context) -> void:
 	super._run(context)
+	# Sub-project #6 Plan A Task 5: populate ctx.tuning with Rocket Clash
+	# defaults. House Twists may override via state.house_twist.params.
+	context.tuning["growth_rate"] = MatchConfig.ROCKET_GROWTH_RATE
+	context.tuning["instabust_prob"] = INSTABUST_PROB
+	context.tuning["max_crash_at"] = MAX_CRASH_AT
 	_stashed_context = context
 	_is_host = context.is_host
 	_active_peers = []
