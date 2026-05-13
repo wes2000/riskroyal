@@ -600,6 +600,41 @@ func _await_resolution_step_delay() -> void:
 		return
 	await get_tree().create_timer(ms / 1000.0).timeout
 
+# Walks state.pending_card_effects and mutates EventResult per-player
+# deltas before the chip_changes broadcast. Currently handles wager_tax
+# (20% chip redirect, no-op on bust or non-positive delta) and heat_delta
+# (additive heat add). Called from RESOLUTION pipeline before chip_changes.
+func _apply_card_effects_to_result(result) -> void:
+	if result == null:
+		state.pending_card_effects = []
+		return
+	for effect in state.pending_card_effects:
+		var t = effect.get("type", "")
+		match t:
+			"wager_tax":
+				var target_id = int(effect.get("target", 0))
+				var source_id = int(effect.get("source", 0))
+				if not result.per_player.has(target_id):
+					continue
+				if result.bust_for(target_id):
+					continue  # no tax when target busted
+				var target_delta = int(result.per_player[target_id].get("chip_delta", 0))
+				if target_delta <= 0:
+					continue  # only tax positive gains
+				var tax = int(target_delta * 0.20)
+				result.per_player[target_id]["chip_delta"] = target_delta - tax
+				if result.per_player.has(source_id):
+					var src_delta = int(result.per_player[source_id].get("chip_delta", 0))
+					result.per_player[source_id]["chip_delta"] = src_delta + tax
+			"heat_delta":
+				var hd_target = int(effect.get("target", 0))
+				var hd_delta = int(effect.get("delta", 0))
+				if not result.per_player.has(hd_target):
+					continue
+				var existing = int(result.per_player[hd_target].get("heat_delta", 0))
+				result.per_player[hd_target]["heat_delta"] = existing + hd_delta
+	state.pending_card_effects = []
+
 func _process_resolution_phase() -> void:
 	var result = state.current_result
 	if result == null:
@@ -609,6 +644,9 @@ func _process_resolution_phase() -> void:
 	await _await_resolution_step_delay()
 	_emit_resolution_step("cash_outs", _build_cash_outs_payload(result))
 	await _await_resolution_step_delay()
+	# NEW: apply pending card effects (Wager Tax, Heat Spike) before chip_changes
+	# so the broadcast carries the modified deltas.
+	_apply_card_effects_to_result(result)
 	_apply_and_emit("chip_changes", result, "chip_delta")
 	await _await_resolution_step_delay()
 	_apply_and_emit("crown_awards", result, "crown_delta")
