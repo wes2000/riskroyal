@@ -34,17 +34,19 @@ func test_house_twist_phase_selects_and_sets_state():
 	assert_true(c.state.house_twist.type in HouseTwistController.TWIST_POOL)
 	assert_eq(c.state.last_twist_type, c.state.house_twist.type, "last_twist_type set")
 
-func test_house_twist_phase_no_op_at_event_0():
+func test_house_twist_phase_fires_at_end_of_event_1():
+	# End of event 1: event_index=0. HOUSE_TWIST fires here to set up
+	# the twist for event 2 (per design spec: 4 twists across events 2-5).
 	var d = _new_host()
 	var c = d.controller
 	c.state.event_index = 0
-	# Seed last_twist_type with a non-default to verify the no-op
-	# preserves it (instead of accidentally asserting the init default).
-	c.state.last_twist_type = "prior_value"
+	c.state.players[0].chips = 500
+	c.state.players[1].chips = 700
 	c._process_house_twist()
-	assert_eq(c.state.house_twist, {}, "no twist before event 1")
-	assert_eq(c.state.last_twist_type, "prior_value",
-		"no-op preserves prior last_twist_type")
+	assert_true(c.state.house_twist.has("type"),
+		"twist fires at end of event 1 (event_index=0)")
+	assert_true(c.state.house_twist.type in HouseTwistController.TWIST_POOL,
+		"selected twist is in pool")
 
 func test_house_twist_phase_broadcasts_announced():
 	var d = _new_host()

@@ -344,10 +344,6 @@ func _all_active_ready(active_peer_ids: Array) -> bool:
 func _process_house_twist() -> void:
 	if not is_host:
 		return
-	if state.event_index == 0:
-		# No twist before event 1; players need a baseline.
-		state.house_twist = {}
-		return
 	var twist = HouseTwistController.select_next_twist(state)
 	state.house_twist = twist
 	state.last_twist_type = twist.type
