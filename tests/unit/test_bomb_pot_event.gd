@@ -90,3 +90,16 @@ func test_pull_out_after_finished_rejected():
 	e._rpc_pull_out_requested(1)
 	assert_false(e._locked_shares.has(1))
 	e.free()
+
+func test_compute_per_tick_share_distributes_across_active_grabbers():
+	# 50 chips/sec, 0.5 sec delta, 2 grabbers → each gets 12.5
+	var share = BombPotEvent.compute_per_tick_share(0.5, 50.0, 2)
+	assert_almost_eq(share, 12.5, 0.001)
+
+func test_compute_per_tick_share_zero_when_no_active_grabbers():
+	var share = BombPotEvent.compute_per_tick_share(0.5, 50.0, 0)
+	assert_almost_eq(share, 0.0, 0.001)
+
+func test_compute_per_tick_share_solo_grabber_gets_full_rate():
+	var share = BombPotEvent.compute_per_tick_share(1.0, 50.0, 1)
+	assert_almost_eq(share, 50.0, 0.001)

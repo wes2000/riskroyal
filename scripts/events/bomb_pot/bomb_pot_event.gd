@@ -121,7 +121,54 @@ func _rpc_pull_out_confirmed(peer_id: int, locked_share: int, pull_out_time_ms: 
 	_locked_shares[peer_id] = locked_share
 	_pull_out_timestamps[peer_id] = pull_out_time_ms
 
+# Override EventNode._process
+func _process(delta: float) -> void:
+	if _finished or _start_time_ms == 0:
+		return
+	# UI: pot growth label (clients estimate from local elapsed; host-authoritative
+	# at finish via locked_shares broadcast).
+	if _pot_label != null:
+		var elapsed = (Time.get_ticks_msec() - _start_time_ms) / 1000.0
+		var growth = _pot_growth_rate_override if _pot_growth_rate_override >= 0.0 else MatchConfig.BOMB_POT_POT_GROWTH_PER_SEC
+		_pot_label.text = "Pot: %d chips" % int(elapsed * growth)
+	if _ticker_label != null:
+		_ticker_label.text = "Ticking..."
+	# Host-only per-frame logic
+	if not _is_host:
+		return
+	# Per-tick share accumulation
+	var active_count = _active_peers.size() - _pulled_out_peers.size()
+	var growth_rate = _pot_growth_rate_override if _pot_growth_rate_override >= 0.0 else MatchConfig.BOMB_POT_POT_GROWTH_PER_SEC
+	var per_tick = compute_per_tick_share(delta, growth_rate, active_count)
+	if per_tick > 0.0:
+		for pid in _active_peers:
+			if not (pid in _pulled_out_peers):
+				_shares_accumulator[pid] = _shares_accumulator.get(pid, 0.0) + per_tick
+	# Bomb timer check
+	var elapsed_sec = (Time.get_ticks_msec() - _start_time_ms) / 1000.0
+	if elapsed_sec >= _bomb_at_sec:
+		_finish()
+		return
+	# Early finish: all active peers pulled out
+	if active_count == 0:
+		_finish()
+
+func _finish() -> void:
+	if _finished:
+		return
+	_finished = true
+	set_process(false)
+	var result = compute_event_result(_stashed_context, _bomb_at_sec, _locked_shares, _pulled_out_peers, _pull_out_timestamps)
+	event_complete.emit(result)
+
 # ----- Static helpers (testable without scene) -----
+
+# Per-tick share each active grabber accrues. Returns 0 when no active
+# grabbers (no one to draw from the pot). delta in seconds.
+static func compute_per_tick_share(delta: float, pot_growth_per_sec: float, active_grabbers: int) -> float:
+	if active_grabbers <= 0:
+		return 0.0
+	return delta * pot_growth_per_sec / float(active_grabbers)
 
 # Returns a bomb detonation time in seconds, in [MIN, MAX]. ~5% chance
 # of "instabust" at exactly MIN_DETONATION_SEC; otherwise uniform over
@@ -134,3 +181,10 @@ static func compute_bomb_at(rng: RandomNumberGenerator) -> float:
 	var span = MatchConfig.BOMB_POT_MAX_DETONATION_SEC - MatchConfig.BOMB_POT_MIN_DETONATION_SEC
 	var t = MatchConfig.BOMB_POT_MIN_DETONATION_SEC + span * r
 	return clamp(t, MatchConfig.BOMB_POT_MIN_DETONATION_SEC, MatchConfig.BOMB_POT_MAX_DETONATION_SEC)
+
+static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dictionary,
+								 pulled_out_peers: Array, pull_out_timestamps: Dictionary) -> RefCounted:
+	# Stub — full implementation in Task 5.
+	var result = EventResult.new()
+	result.event_id = "bomb_pot"
+	return result
