@@ -103,6 +103,83 @@ func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array = []) -> v
 		_:
 			push_error("CardCannonEvent._send_rpc_to_peer: unsupported arity %d" % args.size())
 
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_draw_requested(peer_id: int) -> void:
+	if not _is_host:
+		return
+	if _finished:
+		return
+	if peer_id in _locked_scores:
+		return  # already locked
+	if _busted.get(peer_id, false):
+		return  # already busted
+	if not (peer_id in _active_peers):
+		return  # peer not active
+	var rank = _draw_next_rank()
+	if not _hands.has(peer_id):
+		_hands[peer_id] = []
+	_hands[peer_id].append(rank)
+	var new_score = compute_score(_hands[peer_id])
+	_scores[peer_id] = new_score
+	var is_busted = new_score > 21
+	if is_busted:
+		_busted[peer_id] = true
+	_send_rpc("_rpc_card_drawn", [peer_id, rank, new_score, is_busted])
+	if _all_active_settled():
+		_finish()
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_card_drawn(peer_id: int, rank: int, new_score: int, is_busted: bool) -> void:
+	if not _hands.has(peer_id):
+		_hands[peer_id] = []
+	_hands[peer_id].append(rank)
+	_scores[peer_id] = new_score
+	_busted[peer_id] = is_busted
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_lock_requested(peer_id: int) -> void:
+	if not _is_host:
+		return
+	if _finished:
+		return
+	if peer_id in _locked_scores:
+		return
+	if _busted.get(peer_id, false):
+		return
+	if not (peer_id in _active_peers):
+		return
+	_locked_scores[peer_id] = _scores.get(peer_id, 0)
+	_send_rpc("_rpc_locked", [peer_id, _locked_scores[peer_id]])
+	if _all_active_settled():
+		_finish()
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_locked(peer_id: int, locked_score: int) -> void:
+	_locked_scores[peer_id] = locked_score
+
+func _draw_next_rank() -> int:
+	if _force_next_rank_override >= 0:
+		return _force_next_rank_override
+	# _rng is set by _run from context.rng_seed; defensive fallback for tests
+	# that bypass _run (they set _force_next_rank_override instead).
+	if _rng == null:
+		_rng = RandomNumberGenerator.new()
+	return compute_next_rank(_rng)
+
+func _all_active_settled() -> bool:
+	for pid in _active_peers:
+		if (pid in _locked_scores) or _busted.get(pid, false):
+			continue
+		return false
+	return true
+
+func _finish() -> void:
+	if _finished:
+		return
+	_finished = true
+	var result = compute_event_result(_stashed_context, _hands, _locked_scores, _busted)
+	event_complete.emit(result)
+
 # ----- Static helpers -----
 
 # Returns a single card rank in [2, 11]. 11 is the Ace (high value; the
@@ -124,3 +201,8 @@ static func compute_score(hand: Array) -> int:
 		total -= 10  # demote one Ace from 11 to 1
 		aces -= 1
 	return total
+
+static func compute_event_result(context, hands: Dictionary, locked_scores: Dictionary, busted: Dictionary) -> RefCounted:
+	var result = EventResult.new()
+	result.event_id = "card_cannon"
+	return result
