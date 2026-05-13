@@ -38,9 +38,13 @@ func test_house_twist_phase_no_op_at_event_0():
 	var d = _new_host()
 	var c = d.controller
 	c.state.event_index = 0
+	# Seed last_twist_type with a non-default to verify the no-op
+	# preserves it (instead of accidentally asserting the init default).
+	c.state.last_twist_type = "prior_value"
 	c._process_house_twist()
 	assert_eq(c.state.house_twist, {}, "no twist before event 1")
-	assert_eq(c.state.last_twist_type, "")
+	assert_eq(c.state.last_twist_type, "prior_value",
+		"no-op preserves prior last_twist_type")
 
 func test_house_twist_phase_broadcasts_announced():
 	var d = _new_host()

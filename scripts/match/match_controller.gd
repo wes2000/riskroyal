@@ -352,6 +352,8 @@ func _process_house_twist() -> void:
 	state.house_twist = twist
 	state.last_twist_type = twist.type
 	HouseTwistController.apply_pre_event_effects(state, twist)
+	# Broadcast AFTER apply_pre_event_effects: it mutates twist.params.cards_dealt
+	# in-place; clients need the complete dict including dealt card IDs.
 	_send_rpc("_rpc_house_twist_announced", [twist])
 	house_twist_announced.emit(twist)
 
