@@ -22,9 +22,6 @@ var _is_host: bool = false
 var _finished: bool = false
 var _stashed_context = null
 
-# RPC routing (mirror of MatchController + RocketClashEvent pattern).
-var _multiplayer_node = null
-
 # Test seams
 var _force_bomb_at_override: float = -1.0      # negative = use RNG
 var _pot_growth_rate_override: float = -1.0    # negative = use MatchConfig
@@ -52,13 +49,9 @@ func submit_pull_out() -> void:
 
 # Override EventNode._run
 func _run(context) -> void:
+	super._run(context)  # base self-wires _multiplayer_node
 	_stashed_context = context
 	_is_host = context.is_host
-	# Self-wire _multiplayer_node when in-tree and not explicitly injected
-	# (e.g. by tests). Matches RocketClashEvent's pattern so production RPC
-	# routing works whenever MatchController adds the event to the scene tree.
-	if _multiplayer_node == null and is_inside_tree():
-		_multiplayer_node = self
 	_active_peers = []
 	for p in context.players:
 		if p.is_active_this_event:
@@ -81,27 +74,6 @@ func _run(context) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _rpc_bomb_pot_started(start_time_ms: int) -> void:
 	_start_time_ms = start_time_ms
-
-func _send_rpc(method_name: String, args: Array = []) -> void:
-	if _multiplayer_node == null:
-		return
-	match args.size():
-		0: _multiplayer_node.rpc(method_name)
-		1: _multiplayer_node.rpc(method_name, args[0])
-		2: _multiplayer_node.rpc(method_name, args[0], args[1])
-		3: _multiplayer_node.rpc(method_name, args[0], args[1], args[2])
-		_:
-			push_error("BombPotEvent._send_rpc: unsupported arity %d" % args.size())
-
-func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array = []) -> void:
-	if _multiplayer_node == null:
-		return
-	match args.size():
-		0: _multiplayer_node.rpc_id(peer_id, method_name)
-		1: _multiplayer_node.rpc_id(peer_id, method_name, args[0])
-		2: _multiplayer_node.rpc_id(peer_id, method_name, args[0], args[1])
-		_:
-			push_error("BombPotEvent._send_rpc_to_peer: unsupported arity %d" % args.size())
 
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_pull_out_requested(peer_id: int) -> void:
