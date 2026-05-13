@@ -99,6 +99,6 @@ Run by launching two `godot --path .` windows on this machine.
 | 16 | Double Bounty Round doubles payouts | Twist announced at start of event 2-5; bounty resolution awards 300 chips instead of 150 (Leader bounty) and proportionally for Heat bounties |
 | 17 | No Insurance disables card | Player has Insurance in loadout; twist announced; submit_card_play("insurance") returns rejection toast "Insurance disabled this event"; Insurance modifier never set in event_modifiers |
 | 18 | Leader Cursed reduces survivor reward | Chip leader identified at HOUSE_TWIST; after event, leader's chip_delta is 75% of what their wager × multiplier would normally produce; non-leaders unaffected |
-| 19 | Power Surge deals bonus cards | Every active peer receives +1 random non-sabotage common card at HOUSE_TWIST; broadcast _rpc_starter_pack_dealt with action="power_surge_bonus" reaches all clients |
+| 19 | Power Surge deals bonus cards | Every active peer receives +1 random non-sabotage common card at HOUSE_TWIST; the announce broadcast _rpc_house_twist_announced carries params.cards_dealt {peer_id → card_id}; each client mirrors the card into MatchPlayer.hand |
 | 20 | No-repeat event selection | Across a 5-event Quick Clash, no two consecutive events share the same event_id |
 | 21 | No twist on event 1 | First event's HOUSE_REVEAL sees state.house_twist == {} (no twist banner shown) |
