@@ -25,6 +25,11 @@ var _multiplayer_node = null
 var _force_crash_at_override: float = -1.0  # negative = use RNG
 var _growth_rate_override: float = -1.0     # negative = use MatchConfig
 
+# Per-peer cash-out delay (ms). Populated by MatchController from
+# Cash-Out Jammer card plays. Consumed in _rpc_cash_out_requested host
+# handler — single use per entry, then erased.
+var _pending_cash_out_delays: Dictionary = {}
+
 # Scene-tree refs (resolved in _ready)
 @onready var _multiplier_label: Label = $VBox/MultiplierLabel if has_node("VBox/MultiplierLabel") else null
 @onready var _cash_out_button: Button = $VBox/CashOutButton if has_node("VBox/CashOutButton") else null
@@ -148,6 +153,9 @@ func _current_multiplier_host() -> float:
 	var growth = _growth_rate_override if _growth_rate_override >= 0.0 else MatchConfig.ROCKET_GROWTH_RATE
 	return multiplier_at(elapsed_ms, growth)
 
+func set_cash_out_delay(peer_id: int, delay_ms: int) -> void:
+	_pending_cash_out_delays[peer_id] = delay_ms
+
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_cash_out_requested(peer_id: int, snapshot_mult: float) -> void:
 	if not _is_host:
@@ -159,8 +167,23 @@ func _rpc_cash_out_requested(peer_id: int, snapshot_mult: float) -> void:
 	if _cash_outs.has(peer_id):
 		# Double-click; silently drop.
 		return
+	# Cash-Out Jammer delay (Plan B). Track was_delayed locally so the
+	# relaxed tolerance branch below fires even after we erase the entry.
+	var was_delayed = false
+	if _pending_cash_out_delays.has(peer_id):
+		var delay_ms = _pending_cash_out_delays[peer_id]
+		_pending_cash_out_delays.erase(peer_id)
+		was_delayed = true
+		if delay_ms > 0:
+			await get_tree().create_timer(delay_ms / 1000.0).timeout
+			# After the delay, re-evaluate. Bail if crashed during the wait
+			# or if the peer somehow got cashed already.
+			if _finished or _cash_outs.has(peer_id):
+				return
 	var host_mult = _current_multiplier_host()
-	if abs(snapshot_mult - host_mult) > CASH_OUT_TOLERANCE:
+	# Relaxed tolerance after a jammer delay (per spec sect 7.4): 5x CASH_OUT_TOLERANCE
+	var tolerance = CASH_OUT_TOLERANCE * 5.0 if was_delayed else CASH_OUT_TOLERANCE
+	if abs(snapshot_mult - host_mult) > tolerance:
 		_send_rpc_to_peer(peer_id, "_rpc_cash_out_rejected", [peer_id])
 		return
 	_cash_outs[peer_id] = host_mult
