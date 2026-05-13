@@ -82,6 +82,8 @@ func test_apply_pre_event_effects_power_surge_deals_bonus_cards():
 	# Each active player should now have 1 bonus card in hand
 	for p in s.players:
 		assert_eq(p.hand.size(), 1, "%s should receive 1 bonus card" % p.name)
+	var dealt = twist["params"].get("cards_dealt", {})
+	assert_eq(dealt.size(), s.players.size(), "cards_dealt must have one entry per active player")
 
 func test_apply_pre_event_effects_no_op_for_state_only_twists():
 	var s = _new_state_with_players([500, 500])

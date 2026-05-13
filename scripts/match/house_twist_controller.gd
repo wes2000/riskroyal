@@ -8,7 +8,6 @@
 extends Object
 
 const CardRegistry = preload("res://scripts/cards/card_registry.gd")
-const MatchConfig = preload("res://scripts/match/match_config.gd")
 
 # Full 6-twist pool. Plan A implements 4 (double_bounty, no_insurance,
 # leader_cursed, power_surge); Plan B adds lowest_chips_picks + sudden_death_jackpot.
@@ -105,9 +104,13 @@ static func _all_chips_equal(state) -> bool:
 			return false
 	return true
 
+# Computes the chip leader peer_id with deterministic tie-break by
+# lower seat_index. Diverges from BountyResolver.find_chip_leader_peer_id
+# (which uses first-encountered traversal order in ties); the two are
+# not currently consolidated because BountyResolver's tie behavior is
+# tolerated for bounty placement, while leader_cursed needs determinism
+# for replayability.
 static func _find_chip_leader_peer_id(state) -> int:
-	# Mirrors BountyResolver.find_chip_leader_peer_id (kept local for now;
-	# could DRY later if a third caller emerges).
 	if state.players.is_empty():
 		return 0
 	var leader = state.players[0]
