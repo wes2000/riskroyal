@@ -18,6 +18,8 @@ text = "Loading match..."
 
 [node name="BountyPanelSlot" type="Container" parent="VBox"]
 
+[node name="HouseTwistSlot" type="Container" parent="VBox"]
+
 [node name="BetLoadoutSlot" type="Container" parent="VBox"]
 
 [node name="LoadoutSlot" type="Container" parent="VBox"]

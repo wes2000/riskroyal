@@ -16,6 +16,7 @@ const LoadoutOverlayScene = preload("res://scenes/ui/loadout_overlay.tscn")
 const ShopOverlayScene = preload("res://scenes/ui/shop_overlay.tscn")
 const BountyPanelScene = preload("res://scenes/ui/bounty_panel.tscn")
 const CashOutCardDrawerScene = preload("res://scenes/ui/cash_out_card_drawer.tscn")
+const HouseTwistOverlayScene = preload("res://scenes/ui/house_twist_overlay.tscn")
 const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 
 @onready var _player_panels: HBoxContainer = $VBox/PlayerPanels if has_node("VBox/PlayerPanels") else null
@@ -27,6 +28,7 @@ const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 @onready var _loadout_slot: Container = $VBox/LoadoutSlot if has_node("VBox/LoadoutSlot") else null
 @onready var _shop_slot: Container = $VBox/ShopSlot if has_node("VBox/ShopSlot") else null
 @onready var _bounty_slot: Container = $VBox/BountyPanelSlot if has_node("VBox/BountyPanelSlot") else null
+@onready var _house_twist_slot: Container = $VBox/HouseTwistSlot if has_node("VBox/HouseTwistSlot") else null
 @onready var _cash_out_slot: Container = $VBox/CashOutSlot if has_node("VBox/CashOutSlot") else null
 @onready var _pause_overlay: PanelContainer = $PauseOverlay if has_node("PauseOverlay") else null
 
@@ -38,6 +40,7 @@ var _loadout_overlay: Node = null
 var _shop_overlay: Node = null
 var _bounty_panel: Node = null
 var _cash_out_drawer: Node = null
+var _house_twist_overlay: Node = null
 
 func _ready() -> void:
 	if session == null and get_tree().root.has_node("NetSessionMain"):
@@ -64,6 +67,7 @@ func _ready() -> void:
 	_build_shop_overlay()
 	_build_bounty_panel()
 	_build_cash_out_drawer()
+	_build_house_twist_overlay()
 	if session.is_host:
 		controller.start_match(match_start)
 
@@ -195,6 +199,13 @@ func _build_cash_out_drawer() -> void:
 	_cash_out_drawer.controller = controller
 	_cash_out_drawer.local_player = _find_local_player()
 	_cash_out_slot.add_child(_cash_out_drawer)
+
+func _build_house_twist_overlay() -> void:
+	if _house_twist_slot == null:
+		return
+	_house_twist_overlay = HouseTwistOverlayScene.instantiate()
+	_house_twist_overlay.controller = controller
+	_house_twist_slot.add_child(_house_twist_overlay)
 
 # Static formatter (testable). Takes total_events as a parameter so the
 # caller chooses the count (production passes MatchConfig.QUICK_CLASH_EVENT_COUNT).
