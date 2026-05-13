@@ -97,6 +97,31 @@ static func apply_pre_event_effects(state, twist: Dictionary) -> void:
 				cards_dealt[p.peer_id] = card_id
 			twist["params"]["cards_dealt"] = cards_dealt
 
+# Lazy condition resolution for Sudden Death Jackpot. Called by
+# MatchController._process_event_selection AFTER state.current_event_id
+# is set. Maps event scene path → condition string per spec § 7.6 and
+# rewrites state.house_twist.params.condition in-place. No-op for all
+# other twist types (defensive).
+static func finalize_pending_params(state) -> void:
+	if state.house_twist.get("type", "") != "sudden_death_jackpot":
+		return
+	var event_id = String(state.current_event_id)
+	var condition = ""
+	if event_id.ends_with("rocket_clash_event.tscn"):
+		condition = "cash_out_over_5x"
+	elif event_id.ends_with("bomb_pot_event.tscn"):
+		condition = "pull_out_after_80_pct"
+	elif event_id.ends_with("card_cannon_event.tscn"):
+		condition = "locked_at_perfect"
+	else:
+		push_warning("HouseTwistController.finalize_pending_params: unknown event_id %s" % event_id)
+		return
+	# Mutate the params dict in-place; caller (MatchController) broadcasts
+	# the updated dict via _rpc_house_twist_params_updated.
+	if not state.house_twist.has("params"):
+		state.house_twist["params"] = {}
+	state.house_twist["params"]["condition"] = condition
+
 # Helpers
 
 static func _all_chips_equal(state) -> bool:
