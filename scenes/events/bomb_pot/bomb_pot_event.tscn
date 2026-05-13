@@ -1,0 +1,24 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/events/bomb_pot/bomb_pot_event.gd" id="1"]
+
+[node name="BombPotEvent" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Title" type="Label" parent="VBox"]
+text = "Bomb Pot"
+
+[node name="PotLabel" type="Label" parent="VBox"]
+text = "Pot: 0 chips"
+
+[node name="TickerLabel" type="Label" parent="VBox"]
+text = "Waiting..."
+
+[node name="PullOutButton" type="Button" parent="VBox"]
+text = "Pull Out"
