@@ -184,7 +184,76 @@ static func compute_bomb_at(rng: RandomNumberGenerator) -> float:
 
 static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dictionary,
 								 pulled_out_peers: Array, pull_out_timestamps: Dictionary) -> RefCounted:
-	# Stub — full implementation in Task 5.
 	var result = EventResult.new()
 	result.event_id = "bomb_pot"
+	var summary: Array = []
+	var winner_peer_id = 0
+	var winner_pull_out_ms = -1
+	var winner_seat = INF
+	var modifiers = {}
+	if context != null and "event_modifiers" in context:
+		modifiers = context.event_modifiers
+	for player in context.players:
+		var pid = player.peer_id
+		var wager = int(context.wagers.get(pid, 0))
+		var p_mods = modifiers.get(pid, {})
+		if pid in pulled_out_peers:
+			# Survivor
+			var chip_delta = int(locked_shares.get(pid, 0))
+			var wm = float(p_mods.get("wager_multiplier", 1.0))
+			if wm != 1.0:
+				chip_delta = int(chip_delta * wm)
+			var um = float(p_mods.get("underdog_multiplier", 1.0))
+			if um != 1.0:
+				chip_delta = int(chip_delta * um)
+			result.per_player[pid] = {
+				"chip_delta": chip_delta,
+				"crown_delta": 0,
+				"heat_delta": 0,
+				"bust": false,
+				"cash_out_at": 0.0,
+			}
+			summary.append({
+				"peer_id": pid, "name": player.name,
+				"locked_share": locked_shares.get(pid, 0),
+				"pull_out_ms": pull_out_timestamps.get(pid, 0),
+				"chip_delta": chip_delta, "busted": false, "wager": wager,
+			})
+			# Track latest puller (with seat_index tie-break)
+			var ts = int(pull_out_timestamps.get(pid, 0))
+			if ts > winner_pull_out_ms or (ts == winner_pull_out_ms and player.seat_index < winner_seat):
+				winner_pull_out_ms = ts
+				winner_peer_id = pid
+				winner_seat = player.seat_index
+		else:
+			# Bust
+			var bust_loss = wager
+			if p_mods.get("insurance_pre", false):
+				bust_loss = int(wager / 2)
+			result.per_player[pid] = {
+				"chip_delta": -bust_loss,
+				"crown_delta": 0,
+				"heat_delta": 0,
+				"bust": true,
+				"cash_out_at": 0.0,
+			}
+			summary.append({
+				"peer_id": pid, "name": player.name,
+				"locked_share": 0, "pull_out_ms": 0,
+				"chip_delta": -bust_loss, "busted": true, "wager": wager,
+			})
+	# Crown + heat to last puller
+	if winner_peer_id != 0:
+		result.per_player[winner_peer_id]["crown_delta"] = 1
+		var winner_mods = modifiers.get(winner_peer_id, {})
+		var heat_delta = 1
+		if winner_mods.get("heat_shield", false):
+			heat_delta = int(heat_delta / 2)
+		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
+	result.painful_reveal = {
+		"bomb_at_sec": bomb_at_sec,
+		"winner_peer_id": winner_peer_id,
+		"winner_pull_out_ms": winner_pull_out_ms,
+		"pulls_summary": summary,
+	}
 	return result

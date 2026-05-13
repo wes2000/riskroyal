@@ -103,3 +103,92 @@ func test_compute_per_tick_share_zero_when_no_active_grabbers():
 func test_compute_per_tick_share_solo_grabber_gets_full_rate():
 	var share = BombPotEvent.compute_per_tick_share(1.0, 50.0, 1)
 	assert_almost_eq(share, 50.0, 0.001)
+
+const EventContext = preload("res://scripts/events/event_context.gd")
+const MatchPlayer = preload("res://scripts/match/match_player.gd")
+
+func _make_player(peer_id: int, name: String, seat_index: int = -1) -> RefCounted:
+	var p = MatchPlayer.new()
+	p.peer_id = peer_id
+	p.name = name
+	p.is_active_this_event = true
+	p.seat_index = seat_index if seat_index >= 0 else peer_id
+	return p
+
+func _make_context(player_count: int, wagers: Dictionary, modifiers: Dictionary) -> RefCounted:
+	var ctx = EventContext.new()
+	for i in player_count:
+		ctx.players.append(_make_player(i + 1, "P%d" % (i + 1), i))
+	ctx.wagers = wagers
+	ctx.event_modifiers = modifiers
+	return ctx
+
+func test_compute_event_result_survivor_locks_share():
+	var ctx = _make_context(2, {1: 100, 2: 100}, {})
+	var locked = {1: 200}  # P1 pulled out with 200 chips locked
+	var pulled = [1]
+	var timestamps = {1: 8000}
+	var result = BombPotEvent.compute_event_result(ctx, 15.0, locked, pulled, timestamps)
+	assert_eq(result.per_player[1].chip_delta, 200, "survivor gets locked share")
+	assert_false(result.per_player[1].bust)
+
+func test_compute_event_result_busted_grabber_loses_wager():
+	var ctx = _make_context(2, {1: 100, 2: 150}, {})
+	var locked = {}
+	var pulled = []  # nobody pulled out
+	var timestamps = {}
+	var result = BombPotEvent.compute_event_result(ctx, 10.0, locked, pulled, timestamps)
+	assert_eq(result.per_player[1].chip_delta, -100, "P1 lost wager")
+	assert_eq(result.per_player[2].chip_delta, -150, "P2 lost wager")
+	assert_true(result.per_player[1].bust)
+	assert_true(result.per_player[2].bust)
+
+func test_compute_event_result_crown_to_last_puller():
+	var ctx = _make_context(3, {1: 100, 2: 100, 3: 100}, {})
+	var locked = {1: 150, 2: 200, 3: 100}
+	var pulled = [1, 2, 3]
+	# P2 pulled out last
+	var timestamps = {1: 5000, 2: 12000, 3: 8000}
+	var result = BombPotEvent.compute_event_result(ctx, 15.0, locked, pulled, timestamps)
+	assert_eq(result.per_player[2].crown_delta, 1, "P2 last-puller wins Crown")
+	assert_eq(result.per_player[1].crown_delta, 0)
+	assert_eq(result.per_player[3].crown_delta, 0)
+	assert_eq(result.per_player[2].heat_delta, 1, "Crown winner gets +1 heat")
+
+func test_compute_event_result_crown_tie_breaks_by_seat_index():
+	var ctx = _make_context(2, {1: 100, 2: 100}, {})
+	var locked = {1: 150, 2: 150}
+	var pulled = [1, 2]
+	# Same timestamps (defensive)
+	var timestamps = {1: 8000, 2: 8000}
+	var result = BombPotEvent.compute_event_result(ctx, 15.0, locked, pulled, timestamps)
+	# P1 has seat_index=0 (lower); should win the tie
+	assert_eq(result.per_player[1].crown_delta, 1, "lower seat_index wins tie")
+	assert_eq(result.per_player[2].crown_delta, 0)
+
+func test_compute_event_result_insurance_halves_bust_penalty():
+	var ctx = _make_context(2, {1: 200, 2: 200}, {1: {"insurance_pre": true}})
+	var locked = {}
+	var pulled = []
+	var timestamps = {}
+	var result = BombPotEvent.compute_event_result(ctx, 8.0, locked, pulled, timestamps)
+	assert_eq(result.per_player[1].chip_delta, -100, "Insurance halves P1 bust")
+	assert_eq(result.per_player[2].chip_delta, -200, "P2 no insurance, full loss")
+
+func test_compute_event_result_wager_multiplier_boosts_survivor():
+	var ctx = _make_context(2, {1: 100, 2: 100}, {1: {"wager_multiplier": 1.25}})
+	var locked = {1: 200, 2: 200}
+	var pulled = [1, 2]
+	var timestamps = {1: 9000, 2: 8000}
+	var result = BombPotEvent.compute_event_result(ctx, 15.0, locked, pulled, timestamps)
+	assert_eq(result.per_player[1].chip_delta, 250, "200 * 1.25")
+	assert_eq(result.per_player[2].chip_delta, 200)
+
+func test_compute_event_result_heat_shield_halves_winner_heat():
+	var ctx = _make_context(2, {1: 100, 2: 100}, {1: {"heat_shield": true}})
+	var locked = {1: 200, 2: 100}
+	var pulled = [1, 2]
+	var timestamps = {1: 9000, 2: 7000}  # P1 last puller
+	var result = BombPotEvent.compute_event_result(ctx, 15.0, locked, pulled, timestamps)
+	assert_eq(result.per_player[1].crown_delta, 1, "P1 wins Crown")
+	assert_eq(result.per_player[1].heat_delta, 0, "Heat Shield halves 1 -> 0")
