@@ -187,6 +187,13 @@ static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dic
 			var um = float(p_mods.get("underdog_multiplier", 1.0))
 			if um != 1.0:
 				chip_delta = int(chip_delta * um)
+			# Sub-project #6 Plan A: Leader Cursed reduces leader's survivor reward
+			if context != null:
+				var ht = context.house_twist
+				if ht.get("type", "") == "leader_cursed" and int(ht.get("params", {}).get("leader_peer_id", 0)) == pid:
+					var lc_mult = float(ht.get("params", {}).get("reward_multiplier", 1.0))
+					if lc_mult != 1.0:
+						chip_delta = int(chip_delta * lc_mult)
 			result.per_player[pid] = {
 				"chip_delta": chip_delta,
 				"crown_delta": 0,
