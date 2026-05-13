@@ -58,6 +58,14 @@ func submit_lock() -> void:
 
 func _run(context) -> void:
 	super._run(context)  # base self-wires _multiplayer_node
+	context.tuning["target_score"] = MatchConfig.CARD_CANNON_TARGET_SCORE
+	context.tuning["payout_bands"] = {
+		"low": MatchConfig.CARD_CANNON_PAYOUT_BAND_LOW,
+		"medium": MatchConfig.CARD_CANNON_PAYOUT_BAND_MEDIUM,
+		"strong": MatchConfig.CARD_CANNON_PAYOUT_BAND_STRONG,
+		"heavy": MatchConfig.CARD_CANNON_PAYOUT_BAND_HEAVY,
+		"perfect": MatchConfig.CARD_CANNON_PAYOUT_BAND_PERFECT,
+	}
 	_stashed_context = context
 	_is_host = context.is_host
 	# Derive a per-event RNG from context.rng_seed (EventContext exposes
