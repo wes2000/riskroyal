@@ -14,14 +14,13 @@ func _ready() -> void:
 		controller.house_twist_announced.connect(_on_house_twist_announced)
 
 func _on_house_twist_announced(twist_dict: Dictionary) -> void:
-	visible = true
-	_refresh(twist_dict)
-	# 3-second banner then shrink to corner. Polish: animate; MVP: stay
-	# visible for the whole event, hide when next HOUSE_TWIST replaces
-	# it (which will fire _on_house_twist_announced again).
-	# If twist_dict is empty (event 1 → no twist), hide.
+	# Empty twist (event 1 baseline or post-cleanup) → hide and skip refresh.
 	if twist_dict.get("type", "") == "":
 		visible = false
+		return
+	_refresh(twist_dict)
+	visible = true
+	# Polish (sub-project #7): 3-second banner then shrink to corner.
 
 func _refresh(twist_dict: Dictionary) -> void:
 	if _title_label != null:

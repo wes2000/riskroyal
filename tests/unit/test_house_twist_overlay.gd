@@ -12,9 +12,9 @@ func test_format_twist_title_per_twist_type():
 	assert_eq(HouseTwistOverlay.format_twist_title({}), "")
 
 func test_format_twist_description_per_twist_type():
-	var d1 = HouseTwistOverlay.format_twist_description({"type": "double_bounty"})
-	assert_true(d1.length() > 0, "double_bounty has description")
-	var d2 = HouseTwistOverlay.format_twist_description({"type": "no_insurance"})
-	assert_true(d2.length() > 0, "no_insurance has description")
+	for twist_type in ["double_bounty", "no_insurance", "leader_cursed",
+			"power_surge", "lowest_chips_picks", "sudden_death_jackpot"]:
+		var desc = HouseTwistOverlay.format_twist_description({"type": twist_type})
+		assert_true(desc.length() > 0, "%s has non-empty description" % twist_type)
 	assert_eq(HouseTwistOverlay.format_twist_description({}), "",
 		"empty twist returns empty description")
