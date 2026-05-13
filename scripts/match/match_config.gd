@@ -17,6 +17,8 @@ const HEAT_MAX: int = 10
 
 const EVENT_POOL: Array = [
 	"res://scripts/events/rocket_clash/rocket_clash_event.tscn",
+	"res://scenes/events/bomb_pot/bomb_pot_event.tscn",
+	"res://scenes/events/card_cannon/card_cannon_event.tscn",
 ]
 
 const QUICK_CLASH_EVENT_COUNT: int = 5

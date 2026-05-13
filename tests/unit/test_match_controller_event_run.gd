@@ -1,6 +1,7 @@
 extends GutTest
 
 const MatchController = preload("res://scripts/match/match_controller.gd")
+const MatchConfig = preload("res://scripts/match/match_config.gd")
 const MatchPhase = preload("res://scripts/match/match_phase.gd")
 const MockEvent = preload("res://tests/fakes/mock_event.gd")
 const EventResult = preload("res://scripts/events/event_result.gd")
@@ -39,7 +40,7 @@ func test_event_selection_picks_from_pool():
 	var c = d.controller
 	c.state.phase = MatchPhase.Phase.EVENT_SELECTION
 	c._enter_phase_behavior()
-	assert_eq(c.state.current_event_id, "res://scripts/events/rocket_clash/rocket_clash_event.tscn")
+	assert_true(MatchConfig.EVENT_POOL.has(c.state.current_event_id), "current_event_id must be a member of EVENT_POOL")
 
 func test_main_event_instantiates_via_factory_and_calls_run():
 	var d = _new_controller_with_mock()
