@@ -205,4 +205,76 @@ static func compute_score(hand: Array) -> int:
 static func compute_event_result(context, hands: Dictionary, locked_scores: Dictionary, busted: Dictionary) -> RefCounted:
 	var result = EventResult.new()
 	result.event_id = "card_cannon"
+	var summary: Array = []
+	var winner_peer_id = 0
+	var winner_score = 0
+	var winner_seat = INF
+	var modifiers = {}
+	if context != null and "event_modifiers" in context:
+		modifiers = context.event_modifiers
+	for player in context.players:
+		var pid = player.peer_id
+		var wager = int(context.wagers.get(pid, 0))
+		var p_mods = modifiers.get(pid, {})
+		if busted.get(pid, false):
+			var bust_loss = wager
+			if p_mods.get("insurance_pre", false):
+				bust_loss = int(wager / 2)
+			result.per_player[pid] = {
+				"chip_delta": -bust_loss, "crown_delta": 0, "heat_delta": 0,
+				"bust": true, "cash_out_at": 0.0,
+			}
+			summary.append({
+				"peer_id": pid, "name": player.name,
+				"score": compute_score(hands.get(pid, [])),
+				"locked_score": 0, "chip_delta": -bust_loss, "busted": true, "wager": wager,
+			})
+		else:
+			var locked = int(locked_scores.get(pid, 0))
+			var band_mult = _band_multiplier(locked)
+			var chip_delta = int(wager * band_mult)
+			var wm = float(p_mods.get("wager_multiplier", 1.0))
+			if wm != 1.0:
+				chip_delta = int(chip_delta * wm)
+			var um = float(p_mods.get("underdog_multiplier", 1.0))
+			if um != 1.0:
+				chip_delta = int(chip_delta * um)
+			result.per_player[pid] = {
+				"chip_delta": chip_delta, "crown_delta": 0, "heat_delta": 0,
+				"bust": false, "cash_out_at": 0.0,
+			}
+			summary.append({
+				"peer_id": pid, "name": player.name,
+				"score": locked, "locked_score": locked,
+				"chip_delta": chip_delta, "busted": false, "wager": wager,
+			})
+			# Track winner (seat_index tie-break)
+			if locked > winner_score or (locked == winner_score and player.seat_index < winner_seat):
+				winner_score = locked
+				winner_peer_id = pid
+				winner_seat = player.seat_index
+	# Crown + heat
+	if winner_peer_id != 0 and winner_score > 0:
+		result.per_player[winner_peer_id]["crown_delta"] = 1
+		var winner_mods = modifiers.get(winner_peer_id, {})
+		var heat_delta = 1
+		if winner_mods.get("heat_shield", false):
+			heat_delta = int(heat_delta / 2)
+		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
+	result.painful_reveal = {
+		"winner_peer_id": winner_peer_id,
+		"winner_score": winner_score,
+		"scores_summary": summary,
+	}
 	return result
+
+static func _band_multiplier(score: int) -> float:
+	if score == 21:
+		return MatchConfig.CARD_CANNON_PAYOUT_BAND_PERFECT
+	if score >= 19:
+		return MatchConfig.CARD_CANNON_PAYOUT_BAND_HEAVY
+	if score >= 16:
+		return MatchConfig.CARD_CANNON_PAYOUT_BAND_STRONG
+	if score >= 11:
+		return MatchConfig.CARD_CANNON_PAYOUT_BAND_MEDIUM
+	return MatchConfig.CARD_CANNON_PAYOUT_BAND_LOW

@@ -108,3 +108,85 @@ func test_draw_after_bust_rejected():
 	# Hand should not have grown
 	assert_eq(e._hands[1], [10, 10, 5])
 	e.free()
+
+const EventContext = preload("res://scripts/events/event_context.gd")
+const MatchPlayer = preload("res://scripts/match/match_player.gd")
+
+func _make_player_cc(peer_id: int, name: String, seat_index: int = -1) -> RefCounted:
+	var p = MatchPlayer.new()
+	p.peer_id = peer_id
+	p.name = name
+	p.is_active_this_event = true
+	p.seat_index = seat_index if seat_index >= 0 else peer_id
+	return p
+
+func _make_context_cc(player_count: int, wagers: Dictionary, modifiers: Dictionary) -> RefCounted:
+	var ctx = EventContext.new()
+	for i in player_count:
+		ctx.players.append(_make_player_cc(i + 1, "P%d" % (i + 1), i))
+	ctx.wagers = wagers
+	ctx.event_modifiers = modifiers
+	return ctx
+
+func test_compute_event_result_score_band_payouts():
+	# Five band assertions in one test.
+	var ctx = _make_context_cc(5, {1: 100, 2: 100, 3: 100, 4: 100, 5: 100}, {})
+	var hands = {1: [10], 2: [10, 3], 3: [10, 7], 4: [10, 9], 5: [10, 11]}
+	var locked = {1: 10, 2: 13, 3: 17, 4: 19, 5: 21}
+	var busted = {}
+	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
+	assert_eq(result.per_player[1].chip_delta, 50, "band low: 100 * 0.5")
+	assert_eq(result.per_player[2].chip_delta, 100, "band medium: 100 * 1.0")
+	assert_eq(result.per_player[3].chip_delta, 150, "band strong: 100 * 1.5")
+	assert_eq(result.per_player[4].chip_delta, 200, "band heavy: 100 * 2.0")
+	assert_eq(result.per_player[5].chip_delta, 300, "band perfect: 100 * 3.0")
+
+func test_compute_event_result_busted_player_loses_wager():
+	var ctx = _make_context_cc(2, {1: 100, 2: 100}, {})
+	var hands = {1: [10, 10, 5], 2: [10, 5]}
+	var locked = {2: 15}
+	var busted = {1: true}
+	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
+	assert_eq(result.per_player[1].chip_delta, -100)
+	assert_true(result.per_player[1].bust)
+	assert_eq(result.per_player[2].chip_delta, 100, "band medium")
+
+func test_compute_event_result_crown_to_highest_locked_score():
+	var ctx = _make_context_cc(3, {1: 100, 2: 100, 3: 100}, {})
+	var hands = {1: [10, 7], 2: [10, 9], 3: [10, 5]}
+	var locked = {1: 17, 2: 19, 3: 15}
+	var busted = {}
+	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
+	assert_eq(result.per_player[2].crown_delta, 1, "P2 highest")
+	assert_eq(result.per_player[1].crown_delta, 0)
+	assert_eq(result.per_player[3].crown_delta, 0)
+
+func test_compute_event_result_crown_tie_breaks_by_seat_index():
+	var ctx = _make_context_cc(2, {1: 100, 2: 100}, {})
+	# seat_index for P1 = 0, P2 = 1 (per _make_player_cc default)
+	var hands = {1: [10, 8], 2: [10, 8]}
+	var locked = {1: 18, 2: 18}
+	var busted = {}
+	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
+	assert_eq(result.per_player[1].crown_delta, 1, "lower seat_index wins tie")
+	assert_eq(result.per_player[2].crown_delta, 0)
+
+func test_compute_event_result_insurance_halves_bust_penalty():
+	var ctx = _make_context_cc(2, {1: 200, 2: 200}, {1: {"insurance_pre": true}})
+	var hands = {1: [10, 10, 5], 2: [10, 10, 5]}
+	var locked = {}
+	var busted = {1: true, 2: true}
+	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
+	assert_eq(result.per_player[1].chip_delta, -100, "P1 Insurance halves")
+	assert_eq(result.per_player[2].chip_delta, -200, "P2 no Insurance")
+
+func test_compute_event_result_underdog_odds_boosts_survivor():
+	var ctx = _make_context_cc(2, {1: 100, 2: 100}, {1: {"underdog_multiplier": 1.5}})
+	var hands = {1: [10, 9], 2: [10, 8]}
+	var locked = {1: 19, 2: 18}
+	var busted = {}
+	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
+	# P1: 100 * 2.0 (heavy band) * 1.5 = 300
+	assert_eq(result.per_player[1].chip_delta, 300)
+	# P2: 100 * 1.5 (strong band) = 150
+	assert_eq(result.per_player[2].chip_delta, 150)
