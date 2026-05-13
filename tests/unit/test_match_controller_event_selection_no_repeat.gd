@@ -33,12 +33,14 @@ func test_event_selection_does_not_repeat_immediately():
 			"res://scenes/events/rocket_clash/rocket_clash_event.tscn",
 			"selection must not repeat previous_event_id")
 
-func test_event_selection_falls_back_when_pool_only_has_previous():
-	# If EVENT_POOL only had one entry and that was previous_event_id,
-	# the fallback to the full pool kicks in.
+func test_event_selection_returns_valid_pool_member():
+	# Verifies a valid result is returned regardless of previous_event_id.
+	# NOTE: with EVENT_POOL.size() == 3 (Rocket Clash + Bomb Pot + Card
+	# Cannon), erasing one leaves 2 candidates; the is_empty fallback
+	# branch in _process_event_selection is not exercised here. Add a
+	# dedicated test if EVENT_POOL ever shrinks to one entry.
 	var c = _new_controller()
 	c.state.previous_event_id = "res://scenes/events/rocket_clash/rocket_clash_event.tscn"
-	# Defensive: even if the only entry equals previous_event_id, we get a result
 	c.state.rng.seed = 1
 	c._process_event_selection()
 	assert_true(MatchConfig.EVENT_POOL.has(c.state.current_event_id),
