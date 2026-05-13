@@ -12,6 +12,7 @@ const Bounty = preload("res://scripts/match/bounty.gd")
 const CardRegistry = preload("res://scripts/cards/card_registry.gd")
 const CardEffectDispatcher = preload("res://scripts/match/card_effect_dispatcher.gd")
 const BountyResolver = preload("res://scripts/match/bounty_resolver.gd")
+const ShopController = preload("res://scripts/match/shop_controller.gd")
 
 signal phase_changed(new_phase: int)
 signal event_starting(event_id: String, event_index: int)
@@ -348,46 +349,27 @@ func _all_active_ready(active_peer_ids: Array) -> bool:
 func _process_shop() -> void:
 	if not is_host:
 		return
-	var pool = CardRegistry.shop_pool().duplicate()
-	pool.shuffle()
-	state.current_shop_offer = pool.slice(0, min(MatchConfig.SHOP_OFFER_SIZE, pool.size()))
-	state.shop_done_peers = []
-	_send_rpc("_rpc_shop_opened", [state.current_shop_offer.duplicate()])
-	shop_opened.emit(state.current_shop_offer.duplicate())
+	var offered = ShopController.open(state)
+	_send_rpc("_rpc_shop_opened", [offered])
+	shop_opened.emit(offered)
 	var timeout_sec = _shop_timeout_sec()
 	if timeout_sec <= 0.0:
-		# Test-bypass path: shop is open; do NOT await, do NOT auto-close.
-		# Tests inspect state.current_shop_offer/shop_opened immediately. Any
-		# test exercising the close path calls _close_shop() directly.
 		return
 	if not is_inside_tree():
-		# Detached controller (no scene): treat like timeout=0 — caller
-		# drives the close path explicitly.
 		return
 	var timer = get_tree().create_timer(timeout_sec)
 	while timer.time_left > 0.0:
 		if not is_inside_tree():
 			return  # node freed (e.g. add_child_autofree cleanup); abort silently
-		if _all_active_done_in_shop():
+		if ShopController.all_active_done(state):
 			break
 		await get_tree().process_frame
 	_close_shop()
 
-func _all_active_done_in_shop() -> bool:
-	for p in state.players:
-		if p.is_active_this_event and not (p.peer_id in state.shop_done_peers):
-			return false
-	return true
-
 func _close_shop() -> void:
-	state.current_shop_offer = []
-	state.shop_done_peers = []
+	ShopController.close(state)
 	_send_rpc("_rpc_shop_closed", [])
 	shop_closed.emit()
-
-func _card_cost(card_id: String) -> int:
-	var card = CardRegistry.get_card(card_id)
-	return int(card.get("cost_chips", 0))
 
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_shop_buy_requested(peer_id: int, card_id: String) -> void:
@@ -395,24 +377,23 @@ func _rpc_shop_buy_requested(peer_id: int, card_id: String) -> void:
 		return
 	if state.phase != MatchPhase.Phase.SHOP:
 		return
-	if not (card_id in state.current_shop_offer):
-		_send_rpc_to_peer(peer_id, "_rpc_shop_buy_rejected", [card_id, "not_in_offer"])
-		return
-	if peer_id in state.shop_done_peers:
-		return  # silent: second buy attempt
-	var player = state.find_player(peer_id)
-	if player == null:
-		return
-	var cost = _card_cost(card_id)
-	if player.chips < cost:
-		_send_rpc_to_peer(peer_id, "_rpc_shop_buy_rejected", [card_id, "insufficient_chips"])
-		return
-	if player.hand.size() >= MatchConfig.MAX_HAND_SIZE:
-		_send_rpc_to_peer(peer_id, "_rpc_shop_buy_rejected", [card_id, "hand_full"])
-		return
-	player.chips -= cost
-	player.hand.append(card_id)
-	state.shop_done_peers.append(peer_id)
+	var v = ShopController.validate_buy(state, peer_id, card_id)
+	match v.get("status", ""):
+		"not_in_offer":
+			_send_rpc_to_peer(peer_id, "_rpc_shop_buy_rejected", [card_id, "not_in_offer"])
+			return
+		"already_done":
+			return  # silent
+		"no_such_player":
+			return  # silent
+		"insufficient_chips":
+			_send_rpc_to_peer(peer_id, "_rpc_shop_buy_rejected", [card_id, "insufficient_chips"])
+			return
+		"hand_full":
+			_send_rpc_to_peer(peer_id, "_rpc_shop_buy_rejected", [card_id, "hand_full"])
+			return
+	var cost = int(v.get("cost", 0))
+	ShopController.apply_buy(state, peer_id, card_id, cost)
 	player_resources_changed.emit(peer_id)
 	_send_rpc("_rpc_shop_purchase_confirmed", [peer_id, card_id, cost])
 	_send_rpc("_rpc_apply_deltas", [[{"peer_id": peer_id, "chip_delta": -cost, "crown_delta": 0, "heat_delta": 0}]])
