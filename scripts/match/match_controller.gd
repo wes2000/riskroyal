@@ -292,9 +292,18 @@ func _process_ante_phase() -> void:
 		_send_rpc("_rpc_apply_deltas", [deltas])
 
 func _process_event_selection() -> void:
-	var pool = MatchConfig.EVENT_POOL
+	# Plan B will add: if state.house_twist.type == "lowest_chips_picks":
+	#   defer to async picker flow.
+	# Plan A: uniform random with no-repeat filter (sub-project #5 carry-forward).
+	var pool = MatchConfig.EVENT_POOL.duplicate()
+	if not state.previous_event_id.is_empty():
+		pool.erase(state.previous_event_id)
+		# Defensive: fall back to full pool if filter emptied candidates
+		if pool.is_empty():
+			pool = MatchConfig.EVENT_POOL.duplicate()
 	var idx = state.rng.randi() % pool.size()
 	state.current_event_id = pool[idx]
+	state.previous_event_id = state.current_event_id
 
 func _process_bet_loadout() -> void:
 	if not is_host:
