@@ -17,6 +17,12 @@ const MultiplierBooster = preload("res://scripts/cards/effects/multiplier_booste
 const DoubleOrNothing = preload("res://scripts/cards/effects/double_or_nothing.gd")
 const LateCash = preload("res://scripts/cards/effects/late_cash.gd")
 const UnderdogOdds = preload("res://scripts/cards/effects/underdog_odds.gd")
+const HeatSpike = preload("res://scripts/cards/effects/heat_spike.gd")
+const WagerTax = preload("res://scripts/cards/effects/wager_tax.gd")
+const PlaceBounty = preload("res://scripts/cards/effects/place_bounty.gd")
+const CopycatBet = preload("res://scripts/cards/effects/copycat_bet.gd")
+const CashOutJammer = preload("res://scripts/cards/effects/cash_out_jammer.gd")
+const EmergencyEject = preload("res://scripts/cards/effects/emergency_eject.gd")
 
 # CARDS dict assembled from each effect file's CARD_META + apply Callable.
 # Lazy-built on first lookup. Each entry adds an "effect" Callable to the
@@ -31,6 +37,12 @@ static func _build_cards() -> Dictionary:
 		"double_or_nothing": _entry(DoubleOrNothing.CARD_META, Callable(DoubleOrNothing, "apply")),
 		"late_cash": _entry(LateCash.CARD_META, Callable(LateCash, "apply")),
 		"underdog_odds": _entry(UnderdogOdds.CARD_META, Callable(UnderdogOdds, "apply")),
+		"heat_spike": _entry(HeatSpike.CARD_META, Callable(HeatSpike, "apply")),
+		"wager_tax": _entry(WagerTax.CARD_META, Callable(WagerTax, "apply")),
+		"place_bounty": _entry(PlaceBounty.CARD_META, Callable(PlaceBounty, "apply")),
+		"copycat_bet": _entry(CopycatBet.CARD_META, Callable(CopycatBet, "apply")),
+		"cash_out_jammer": _entry(CashOutJammer.CARD_META, Callable(CashOutJammer, "apply")),
+		"emergency_eject": _entry(EmergencyEject.CARD_META, Callable(EmergencyEject, "apply")),
 	}
 
 static func _entry(meta: Dictionary, effect: Callable) -> Dictionary:
