@@ -104,8 +104,44 @@ func _process(_delta: float) -> void:
 	var mult = multiplier_at(elapsed_ms, growth)
 	if _multiplier_label != null:
 		_multiplier_label.text = "%.2fx" % mult
+	# Auto-eject check (host only). Per-frame, single fire per peer.
+	if _is_host:
+		var ejected = _check_auto_ejects(mult)
+		for peer_id in ejected:
+			# Broadcast as if the player cashed out — clients mirror via
+			# _rpc_cash_out_confirmed which already updates their _cash_outs.
+			_send_rpc("_rpc_cash_out_confirmed", [peer_id, mult])
 	if _is_host and mult >= _crash_at and not _finished:
 		_finish()
+
+# Host-only per-frame check: auto-cashes any loaded player whose
+# multiplier has reached their threshold. Returns the list of peer_ids
+# that were auto-ejected this frame (used for broadcast).
+func _check_auto_ejects(current_mult: float) -> Array:
+	if not _is_host or _finished:
+		return []
+	if _stashed_context == null:
+		return []
+	var modifiers = _stashed_context.event_modifiers if "event_modifiers" in _stashed_context else {}
+	var triggered: Array = []
+	for peer_id in _active_peers:
+		var m = modifiers.get(peer_id, {})
+		if not m.get("auto_eject_loaded", false):
+			continue
+		if _cash_outs.has(peer_id):
+			continue
+		var threshold = float(m.get("auto_eject_threshold", 3.0))
+		if current_mult >= threshold and current_mult < _crash_at:
+			_cash_outs[peer_id] = current_mult
+			triggered.append(peer_id)
+			# Mark as played so the loadout-based per-frame check is idempotent
+			# (no re-trigger). Spec sect 5.5. Find the player object via
+			# _stashed_context.players (read-by-ref from state.players).
+			for p in _stashed_context.players:
+				if p.peer_id == peer_id and not ("emergency_eject" in p.played_this_event):
+					p.played_this_event.append("emergency_eject")
+					break
+	return triggered
 
 func _finish() -> void:
 	_finished = true
