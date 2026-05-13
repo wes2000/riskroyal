@@ -53,5 +53,19 @@ const CARD_COST_RARE: int = 150
 const CARD_COST_ROYAL: int = 400
 const BOUNTY_BASE_REWARD: int = 150
 
+# Sub-project #5 (Bomb Pot + Card Cannon)
+# Bomb Pot
+const BOMB_POT_POT_GROWTH_PER_SEC: float = 50.0   # chips/sec total distributed
+const BOMB_POT_MIN_DETONATION_SEC: float = 5.0
+const BOMB_POT_MAX_DETONATION_SEC: float = 25.0
+const BOMB_POT_INSTABUST_PROB: float = 0.05       # 5% chance bomb fires at MIN
+# Card Cannon
+const CARD_CANNON_TARGET_SCORE: int = 21
+const CARD_CANNON_PAYOUT_BAND_LOW: float = 0.5    # scores 1-10
+const CARD_CANNON_PAYOUT_BAND_MEDIUM: float = 1.0 # scores 11-15
+const CARD_CANNON_PAYOUT_BAND_STRONG: float = 1.5 # scores 16-18
+const CARD_CANNON_PAYOUT_BAND_HEAVY: float = 2.0  # scores 19-20
+const CARD_CANNON_PAYOUT_BAND_PERFECT: float = 3.0 # score 21
+
 static func starting_chips_for_player_count(count: int) -> int:
 	return STARTING_CHIPS_BY_PLAYER_COUNT.get(count, 500)
