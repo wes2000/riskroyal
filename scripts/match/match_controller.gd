@@ -14,6 +14,7 @@ const CardEffectDispatcher = preload("res://scripts/match/card_effect_dispatcher
 const BountyResolver = preload("res://scripts/match/bounty_resolver.gd")
 const ShopController = preload("res://scripts/match/shop_controller.gd")
 const MatchRpcSender = preload("res://scripts/match/match_rpc_sender.gd")
+const HouseTwistController = preload("res://scripts/match/house_twist_controller.gd")
 
 signal phase_changed(new_phase: int)
 signal event_starting(event_id: String, event_index: int)
@@ -34,6 +35,7 @@ signal shop_opened(offered_card_ids: Array)
 signal shop_closed
 signal shop_purchase_confirmed(peer_id: int, card_id: String, cost_chips: int)
 signal shop_purchase_rejected(peer_id: int, card_id: String, reason: String)
+signal house_twist_announced(twist_dict: Dictionary)
 
 var state: MatchState
 var is_host: bool = false
@@ -271,6 +273,7 @@ func _enter_phase_behavior() -> void:
 			await _process_shop()
 			await _schedule_advance()
 		MatchPhase.Phase.HOUSE_TWIST:
+			_process_house_twist()
 			await _schedule_advance()
 		MatchPhase.Phase.MATCH_END:
 			_process_match_end()
@@ -337,6 +340,20 @@ func _all_active_ready(active_peer_ids: Array) -> bool:
 		if not state.pending_wagers.has(pid):
 			return false
 	return true
+
+func _process_house_twist() -> void:
+	if not is_host:
+		return
+	if state.event_index == 0:
+		# No twist before event 1; players need a baseline.
+		state.house_twist = {}
+		return
+	var twist = HouseTwistController.select_next_twist(state)
+	state.house_twist = twist
+	state.last_twist_type = twist.type
+	HouseTwistController.apply_pre_event_effects(state, twist)
+	_send_rpc("_rpc_house_twist_announced", [twist])
+	house_twist_announced.emit(twist)
 
 func _process_shop() -> void:
 	if not is_host:
@@ -422,6 +439,12 @@ func _rpc_shop_purchase_confirmed(peer_id: int, card_id: String, cost_chips: int
 @rpc("authority", "call_remote", "reliable")
 func _rpc_shop_buy_rejected(card_id: String, reason: String) -> void:
 	shop_purchase_rejected.emit(0, card_id, reason)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_house_twist_announced(twist_dict: Dictionary) -> void:
+	state.house_twist = twist_dict.duplicate(true)
+	state.last_twist_type = twist_dict.get("type", "")
+	house_twist_announced.emit(twist_dict)
 
 func submit_shop_buy(card_id: String) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
