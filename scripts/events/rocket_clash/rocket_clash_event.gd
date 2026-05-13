@@ -132,15 +132,11 @@ func _check_auto_ejects(current_mult: float) -> Array:
 			continue
 		var threshold = float(m.get("auto_eject_threshold", 3.0))
 		if current_mult >= threshold and current_mult < _crash_at:
+			# Idempotent: _cash_outs.has(peer_id) on line 131 prevents re-trigger.
+			# played_this_event was already populated when the card was played
+			# during BET_LOADOUT (MatchController._rpc_card_play_requested).
 			_cash_outs[peer_id] = current_mult
 			triggered.append(peer_id)
-			# Mark as played so the loadout-based per-frame check is idempotent
-			# (no re-trigger). Spec sect 5.5. Find the player object via
-			# _stashed_context.players (read-by-ref from state.players).
-			for p in _stashed_context.players:
-				if p.peer_id == peer_id and not ("emergency_eject" in p.played_this_event):
-					p.played_this_event.append("emergency_eject")
-					break
 	return triggered
 
 func _finish() -> void:
