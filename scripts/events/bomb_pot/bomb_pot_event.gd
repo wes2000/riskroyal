@@ -98,6 +98,29 @@ func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array = []) -> v
 		_:
 			push_error("BombPotEvent._send_rpc_to_peer: unsupported arity %d" % args.size())
 
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_pull_out_requested(peer_id: int) -> void:
+	if not _is_host:
+		return
+	if _finished or _start_time_ms == 0:
+		return
+	if peer_id in _pulled_out_peers:
+		return  # silent double-tap drop
+	if not (peer_id in _active_peers):
+		return  # peer not in this event
+	var elapsed_ms = Time.get_ticks_msec() - _start_time_ms
+	_locked_shares[peer_id] = int(_shares_accumulator.get(peer_id, 0.0))
+	_pull_out_timestamps[peer_id] = elapsed_ms
+	_pulled_out_peers.append(peer_id)
+	_send_rpc("_rpc_pull_out_confirmed", [peer_id, _locked_shares[peer_id], elapsed_ms])
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_pull_out_confirmed(peer_id: int, locked_share: int, pull_out_time_ms: int) -> void:
+	if not (peer_id in _pulled_out_peers):
+		_pulled_out_peers.append(peer_id)
+	_locked_shares[peer_id] = locked_share
+	_pull_out_timestamps[peer_id] = pull_out_time_ms
+
 # ----- Static helpers (testable without scene) -----
 
 # Returns a bomb detonation time in seconds, in [MIN, MAX]. ~5% chance
