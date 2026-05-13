@@ -50,6 +50,10 @@ func submit_pull_out() -> void:
 # Override EventNode._run
 func _run(context) -> void:
 	super._run(context)  # base self-wires _multiplayer_node
+	context.tuning["pot_growth_per_sec"] = MatchConfig.BOMB_POT_POT_GROWTH_PER_SEC
+	context.tuning["min_detonation_sec"] = MatchConfig.BOMB_POT_MIN_DETONATION_SEC
+	context.tuning["max_detonation_sec"] = MatchConfig.BOMB_POT_MAX_DETONATION_SEC
+	context.tuning["instabust_prob"] = MatchConfig.BOMB_POT_INSTABUST_PROB
 	_stashed_context = context
 	_is_host = context.is_host
 	_active_peers = []
