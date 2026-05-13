@@ -446,6 +446,15 @@ func _rpc_shop_buy_rejected(card_id: String, reason: String) -> void:
 func _rpc_house_twist_announced(twist_dict: Dictionary) -> void:
 	state.house_twist = twist_dict.duplicate(true)
 	state.last_twist_type = twist_dict.get("type", "")
+	# Power Surge: mirror the host's bonus-card deal into each client's
+	# local MatchPlayer.hand. Without this, clients show stale hands.
+	var cards_dealt: Dictionary = twist_dict.get("params", {}).get("cards_dealt", {})
+	for peer_id in cards_dealt:
+		var card_id: String = String(cards_dealt[peer_id])
+		for p in state.players:
+			if p.peer_id == int(peer_id):
+				p.hand.append(card_id)
+				break
 	house_twist_announced.emit(twist_dict)
 
 func submit_shop_buy(card_id: String) -> void:

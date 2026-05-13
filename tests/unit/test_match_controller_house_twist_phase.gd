@@ -61,3 +61,21 @@ func test_house_twist_phase_broadcasts_announced():
 			assert_true(call.args[0].has("type"), "broadcast carries twist dict")
 			break
 	assert_true(found, "_rpc_house_twist_announced broadcast")
+
+func test_house_twist_announced_mirrors_power_surge_dealt_cards():
+	# Client receives the announce RPC carrying cards_dealt; their local
+	# MatchPlayer.hand must reflect the bonus deal.
+	var d = _new_host()
+	var c = d.controller
+	# Clear hands to verify the receiver appends, not just reads
+	for p in c.state.players:
+		p.hand = []
+	var twist_dict = {
+		"type": "power_surge",
+		"params": {"cards_dealt": {1: "insurance", 2: "heat_shield"}},
+	}
+	c._rpc_house_twist_announced(twist_dict)
+	assert_eq(c.state.players[0].hand, ["insurance"],
+		"P1 receives dealt card from cards_dealt")
+	assert_eq(c.state.players[1].hand, ["heat_shield"],
+		"P2 receives dealt card from cards_dealt")
