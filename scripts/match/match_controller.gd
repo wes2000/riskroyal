@@ -475,6 +475,27 @@ func _process_main_event() -> void:
 	_start_event_timeout_watchdog()
 	var context = _build_event_context()
 	_current_event_node._run(context)
+	_inject_pending_event_effects()
+
+# Called from MAIN_EVENT entry after _current_event_node is instantiated.
+# Drains state.pending_card_effects of cash_out_delay entries and forwards
+# them to the event via set_cash_out_delay. Other pending entries (heat_delta,
+# wager_tax) stay queued for RESOLUTION's _apply_card_effects_to_result.
+func _inject_pending_event_effects() -> void:
+	if _current_event_node == null:
+		return
+	if not _current_event_node.has_method("set_cash_out_delay"):
+		return
+	var kept: Array = []
+	for effect in state.pending_card_effects:
+		if effect.get("type", "") == "cash_out_delay":
+			_current_event_node.set_cash_out_delay(
+				int(effect.get("target", 0)),
+				int(effect.get("delay_ms", 750)),
+			)
+		else:
+			kept.append(effect)
+	state.pending_card_effects = kept
 
 func _build_event_context():
 	var ctx = EventContext.new()
