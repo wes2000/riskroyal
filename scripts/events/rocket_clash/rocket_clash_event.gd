@@ -267,6 +267,12 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 		var wager = int(context.wagers.get(pid, 0))
 		var p_mods = modifiers.get(pid, {})
 		if busted.has(pid):
+			# Note: Insurance x Double-or-Nothing stacks. Player with both cards plays
+			# them both during BET_LOADOUT (legal: MAX_LOADOUT_SIZE = 2). Insurance
+			# halves the POST-double wager on bust: e.g., 100 wager doubled to 200,
+			# then insurance halves bust loss to 100. This is intentional (player
+			# spent two card slots + 200 chips to set this up; reward is risk-mitigated
+			# greed). Confirmed by Plan B review.
 			var bust_loss = wager
 			if p_mods.get("insurance_pre", false):
 				bust_loss = int(wager / 2)  # Insurance halves bust penalty

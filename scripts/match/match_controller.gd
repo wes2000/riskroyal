@@ -874,6 +874,12 @@ func _rpc_card_play_requested(peer_id: int, card_id: String, target_peer_id: int
 	_send_rpc("_rpc_card_effect_applied", [peer_id, card_id, effect_result])
 	card_effect_applied.emit(peer_id, card_id, effect_result)
 
+# Client mirror of card play effects. Subtle emit symmetry: the host
+# emits card_effect_applied in _rpc_card_play_requested (after broadcasting
+# this RPC); clients emit here. With @rpc("call_remote") the host doesn't
+# receive its own broadcast, so the host's emit happens only on the
+# request side and the client's emit only on the mirror side — no double
+# emits. If a future refactor changes the call mode, audit this carefully.
 @rpc("authority", "call_remote", "reliable")
 func _rpc_card_effect_applied(peer_id: int, card_id: String, effect_result: Dictionary) -> void:
 	# Clients mirror via the same dispatcher

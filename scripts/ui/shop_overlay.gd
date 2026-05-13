@@ -11,19 +11,31 @@ const CardRegistry = preload("res://scripts/cards/card_registry.gd")
 
 var controller  # MatchController-like
 var local_player
+var _last_offered_count: int = 0
 
 func _ready() -> void:
 	visible = false
 	if controller != null:
 		controller.shop_opened.connect(_on_shop_opened)
 		controller.shop_closed.connect(_on_shop_closed)
+		controller.player_resources_changed.connect(_on_player_resources_changed)
 	if _done_button != null:
 		_done_button.pressed.connect(_on_done_pressed)
 
+func _on_player_resources_changed(peer_id: int) -> void:
+	if not visible:
+		return
+	if local_player != null and peer_id == local_player.peer_id:
+		_refresh_summary()
+
 func _on_shop_opened(offered: Array) -> void:
 	visible = true
+	_last_offered_count = offered.size()
+	_refresh_summary()
+
+func _refresh_summary() -> void:
 	if _summary_label != null and local_player != null:
-		_summary_label.text = "Shop open: %d offered, you have %d chips" % [offered.size(), local_player.chips]
+		_summary_label.text = format_summary_text(_last_offered_count, local_player.chips)
 
 func _on_shop_closed() -> void:
 	visible = false
@@ -47,6 +59,9 @@ static func format_shop_offer(offered: Array) -> Array:
 			"cost": int(card.get("cost_chips", 0)),
 		})
 	return out
+
+static func format_summary_text(offered_count: int, chips: int) -> String:
+	return "Shop open: %d offered, you have %d chips" % [offered_count, chips]
 
 static func can_afford(chips: int, cost: int) -> bool:
 	return chips >= cost
