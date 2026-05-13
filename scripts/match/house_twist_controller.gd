@@ -20,22 +20,12 @@ const TWIST_POOL: Array = [
 	"sudden_death_jackpot",
 ]
 
-# Plan A subset: only the 4 twists with full consumer wiring. Plan B
-# will widen selection back to TWIST_POOL when it adds consumers for
-# lowest_chips_picks + sudden_death_jackpot.
-const PLAN_A_TWISTS: Array = [
-	"double_bounty",
-	"no_insurance",
-	"leader_cursed",
-	"power_surge",
-]
-
 # Picks the next twist uniformly from the pool, with no-repeat filter
 # (excludes state.last_twist_type) and degenerate-case filters
 # (lowest_chips_picks + leader_cursed excluded when all peers have
 # equal chips).
 static func select_next_twist(state) -> Dictionary:
-	var pool = PLAN_A_TWISTS.duplicate()
+	var pool = TWIST_POOL.duplicate()
 	# No-repeat filter
 	if state.last_twist_type != "":
 		pool.erase(state.last_twist_type)
@@ -45,7 +35,7 @@ static func select_next_twist(state) -> Dictionary:
 		pool.erase("leader_cursed")
 	# Defensive: fall back to full pool if filters emptied the candidates
 	if pool.is_empty():
-		pool = PLAN_A_TWISTS.duplicate()
+		pool = TWIST_POOL.duplicate()
 	var idx = state.rng.randi() % pool.size()
 	var twist_type = pool[idx]
 	return {

@@ -157,6 +157,13 @@ func start_match(match_start) -> void:
 	state.rng_seed = match_start.rng_seed
 	state.seed_rng()
 	state.event_index = 0
+	# Sub-project #6 Plan B Task 1: defensive reset of twist + event-pool
+	# tracking. Production never reuses a controller instance, but this
+	# closes the Plan A carry-forward documented in
+	# project_riskroyal_followups.md.
+	state.house_twist = {}
+	state.last_twist_type = ""
+	state.previous_event_id = ""
 	# Deal starter pack of 3 random commons (excluding sabotage)
 	_deal_starter_pack()
 	_set_phase(MatchPhase.Phase.HOUSE_REVEAL)

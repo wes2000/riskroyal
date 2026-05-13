@@ -16,11 +16,11 @@ func _new_state_with_players(chips_array: Array) -> RefCounted:
 	s.seed_rng()
 	return s
 
-func test_select_next_twist_picks_from_plan_a_pool_when_no_history():
+func test_select_next_twist_picks_from_full_pool_when_no_history():
 	var s = _new_state_with_players([500, 700, 600])  # unequal chips → all twists eligible
 	var twist = HouseTwistController.select_next_twist(s)
-	assert_true(twist.get("type", "") in HouseTwistController.PLAN_A_TWISTS,
-		"Plan A: selected twist must be in PLAN_A_TWISTS subset")
+	assert_true(twist.get("type", "") in HouseTwistController.TWIST_POOL,
+		"selected twist must be in TWIST_POOL (Plan B widens selection)")
 
 func test_select_next_twist_excludes_last_twist_type():
 	# Run select 20 times after seeding last_twist_type; should NEVER return that type.
