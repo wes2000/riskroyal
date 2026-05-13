@@ -10,6 +10,7 @@ const MatchConfig = preload("res://scripts/match/match_config.gd")
 const EventContext = preload("res://scripts/events/event_context.gd")
 const Bounty = preload("res://scripts/match/bounty.gd")
 const CardRegistry = preload("res://scripts/cards/card_registry.gd")
+const CardEffectDispatcher = preload("res://scripts/match/card_effect_dispatcher.gd")
 
 signal phase_changed(new_phase: int)
 signal event_starting(event_id: String, event_index: int)
@@ -903,87 +904,28 @@ func _current_timing_window() -> String:
 			return ""
 
 func _apply_effect_result(effect: Dictionary, peer_id: int) -> void:
+	CardEffectDispatcher.apply(state, peer_id, effect, is_host)
+	# Outbound RPCs are host-only and post-state-mutation. The dispatcher
+	# already updated state; we just need to broadcast for the 3 effect
+	# types that broadcast.
 	if not effect.get("applied", false):
+		return
+	if not is_host:
 		return
 	var t = effect.get("type", "")
 	match t:
-		"insurance_pre":
-			_ensure_modifiers(peer_id)
-			state.event_modifiers[peer_id]["insurance_pre"] = true
-		"heat_shield":
-			_ensure_modifiers(peer_id)
-			state.event_modifiers[peer_id]["heat_shield"] = true
-		"wager_multiplier":
-			_ensure_modifiers(peer_id)
-			state.event_modifiers[peer_id]["wager_multiplier"] = float(effect.get("multiplier", 1.0))
-		"late_cash_bonus":
-			_ensure_modifiers(peer_id)
-			state.event_modifiers[peer_id]["late_cash_bonus"] = true
-			state.event_modifiers[peer_id]["late_cash_threshold"] = float(effect.get("threshold", 5.0))
-			state.event_modifiers[peer_id]["late_cash_bonus_chips"] = int(effect.get("bonus_chips", 200))
-		"underdog_multiplier":
-			_ensure_modifiers(peer_id)
-			state.event_modifiers[peer_id]["underdog_multiplier"] = float(effect.get("multiplier", 1.5))
-		"double_or_nothing":
-			var new_wager = int(effect.get("new_wager", 0))
-			state.pending_wagers[peer_id] = new_wager
-			# Only host re-broadcasts the wager change. Clients mirror via
-			# _rpc_card_effect_applied -> this dispatcher; they must not re-broadcast.
-			if is_host:
-				_send_rpc("_rpc_wager_acknowledged", [peer_id, new_wager])
-		"post_event_heat_delta":
-			state.pending_card_effects.append({
-				"type": "heat_delta",
-				"target": int(effect.get("target", 0)),
-				"delta": int(effect.get("delta", 0)),
-			})
-		"post_event_wager_tax":
-			state.pending_card_effects.append({
-				"type": "wager_tax",
-				"source": int(effect.get("source", 0)),
-				"target": int(effect.get("target", 0)),
-			})
 		"place_bounty":
-			if is_host:
-				var b = Bounty.new()
-				b.origin = "placed"
-				b.target = int(effect.get("target", 0))
-				b.condition = "bust"
-				b.reward_chips = int(effect.get("reward_chips", MatchConfig.BOUNTY_BASE_REWARD))
-				b.placed_by = int(effect.get("placed_by", 0))
-				b.placed_at_event = int(effect.get("placed_at_event", state.event_index))
-				b.placed_at_target_heat = int(effect.get("placed_at_target_heat", 0))
-				state.bounties.append(b)
+			if state.bounties.size() > 0:
+				var b = state.bounties.back()
 				_send_rpc("_rpc_bounties_placed", [[b.to_dict()]])
 				bounty_placed.emit(b.to_dict())
 		"copycat_bet":
-			# Host: updates pending_wagers + broadcasts wager_acknowledged.
-			# Client mirror via _rpc_card_effect_applied: also updates
-			# pending_wagers; later receives wager_acknowledged broadcast
-			# which sets the same value (idempotent). Net effect consistent.
 			var caller = int(effect.get("source", peer_id))
 			var new_wager = int(effect.get("new_wager", 0))
-			state.pending_wagers[caller] = new_wager
-			if is_host:
-				_send_rpc("_rpc_wager_acknowledged", [caller, new_wager])
-		"cash_out_delay":
-			# Queue as pending effect; MatchController injects into the
-			# active RocketClashEvent before / during MAIN_EVENT (Task 11).
-			state.pending_card_effects.append({
-				"type": "cash_out_delay",
-				"target": int(effect.get("target", 0)),
-				"delay_ms": int(effect.get("delay_ms", 750)),
-			})
-		"auto_eject_loaded":
-			_ensure_modifiers(peer_id)
-			state.event_modifiers[peer_id]["auto_eject_loaded"] = true
-			state.event_modifiers[peer_id]["auto_eject_threshold"] = float(effect.get("threshold", 3.0))
-		_:
-			push_warning("Unhandled effect type: %s" % t)
-
-func _ensure_modifiers(peer_id: int) -> void:
-	if not state.event_modifiers.has(peer_id):
-		state.event_modifiers[peer_id] = {}
+			_send_rpc("_rpc_wager_acknowledged", [caller, new_wager])
+		"double_or_nothing":
+			var new_wager = int(effect.get("new_wager", 0))
+			_send_rpc("_rpc_wager_acknowledged", [peer_id, new_wager])
 
 @rpc("authority", "call_remote", "reliable")
 func _rpc_phase_changed(phase: int, ctx: Dictionary) -> void:
