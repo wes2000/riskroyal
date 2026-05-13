@@ -22,9 +22,6 @@ var _is_host: bool = false
 var _finished: bool = false
 var _stashed_context = null
 
-# RPC routing (mirror of MatchController + RocketClashEvent pattern).
-var _multiplayer_node = null
-
 # Test seams
 var _force_bomb_at_override: float = -1.0      # negative = use RNG
 var _pot_growth_rate_override: float = -1.0    # negative = use MatchConfig
@@ -52,13 +49,13 @@ func submit_pull_out() -> void:
 
 # Override EventNode._run
 func _run(context) -> void:
+	super._run(context)  # base self-wires _multiplayer_node
+	context.tuning["pot_growth_per_sec"] = MatchConfig.BOMB_POT_POT_GROWTH_PER_SEC
+	context.tuning["min_detonation_sec"] = MatchConfig.BOMB_POT_MIN_DETONATION_SEC
+	context.tuning["max_detonation_sec"] = MatchConfig.BOMB_POT_MAX_DETONATION_SEC
+	context.tuning["instabust_prob"] = MatchConfig.BOMB_POT_INSTABUST_PROB
 	_stashed_context = context
 	_is_host = context.is_host
-	# Self-wire _multiplayer_node when in-tree and not explicitly injected
-	# (e.g. by tests). Matches RocketClashEvent's pattern so production RPC
-	# routing works whenever MatchController adds the event to the scene tree.
-	if _multiplayer_node == null and is_inside_tree():
-		_multiplayer_node = self
 	_active_peers = []
 	for p in context.players:
 		if p.is_active_this_event:
@@ -81,27 +78,6 @@ func _run(context) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _rpc_bomb_pot_started(start_time_ms: int) -> void:
 	_start_time_ms = start_time_ms
-
-func _send_rpc(method_name: String, args: Array = []) -> void:
-	if _multiplayer_node == null:
-		return
-	match args.size():
-		0: _multiplayer_node.rpc(method_name)
-		1: _multiplayer_node.rpc(method_name, args[0])
-		2: _multiplayer_node.rpc(method_name, args[0], args[1])
-		3: _multiplayer_node.rpc(method_name, args[0], args[1], args[2])
-		_:
-			push_error("BombPotEvent._send_rpc: unsupported arity %d" % args.size())
-
-func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array = []) -> void:
-	if _multiplayer_node == null:
-		return
-	match args.size():
-		0: _multiplayer_node.rpc_id(peer_id, method_name)
-		1: _multiplayer_node.rpc_id(peer_id, method_name, args[0])
-		2: _multiplayer_node.rpc_id(peer_id, method_name, args[0], args[1])
-		_:
-			push_error("BombPotEvent._send_rpc_to_peer: unsupported arity %d" % args.size())
 
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_pull_out_requested(peer_id: int) -> void:
@@ -211,6 +187,13 @@ static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dic
 			var um = float(p_mods.get("underdog_multiplier", 1.0))
 			if um != 1.0:
 				chip_delta = int(chip_delta * um)
+			# Sub-project #6 Plan A: Leader Cursed reduces leader's survivor reward
+			if context != null:
+				var ht = context.house_twist
+				if ht.get("type", "") == "leader_cursed" and int(ht.get("params", {}).get("leader_peer_id", 0)) == pid:
+					var lc_mult = float(ht.get("params", {}).get("reward_multiplier", 1.0))
+					if lc_mult != 1.0:
+						chip_delta = int(chip_delta * lc_mult)
 			result.per_player[pid] = {
 				"chip_delta": chip_delta,
 				"crown_delta": 0,

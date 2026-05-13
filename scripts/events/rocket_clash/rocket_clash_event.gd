@@ -17,10 +17,6 @@ var _is_host: bool = false
 var _finished: bool = false
 var _stashed_context = null          # held so _finish can call compute_event_result
 
-# RPC routing (mirror of MatchController's pattern). Tests inject
-# FakeMultiplayerNode; production self-wires via the same pattern.
-var _multiplayer_node = null
-
 # Test seams
 var _force_crash_at_override: float = -1.0  # negative = use RNG
 var _growth_rate_override: float = -1.0     # negative = use MatchConfig
@@ -60,6 +56,12 @@ func _on_cash_out_button_pressed() -> void:
 	_send_rpc("_rpc_cash_out_requested", [my_peer_id, snapshot])
 
 func _run(context) -> void:
+	super._run(context)
+	# Sub-project #6 Plan A Task 5: populate ctx.tuning with Rocket Clash
+	# defaults. House Twists may override via state.house_twist.params.
+	context.tuning["growth_rate"] = MatchConfig.ROCKET_GROWTH_RATE
+	context.tuning["instabust_prob"] = INSTABUST_PROB
+	context.tuning["max_crash_at"] = MAX_CRASH_AT
 	_stashed_context = context
 	_is_host = context.is_host
 	_active_peers = []
@@ -69,9 +71,6 @@ func _run(context) -> void:
 	rng.seed = context.rng_seed
 	if not _is_host:
 		return  # client waits for _rpc_rocket_launched
-	# Production self-wire: if no injection and we're in tree, route via self.
-	if _multiplayer_node == null and is_inside_tree():
-		_multiplayer_node = self
 	# Compute crash_at deterministically.
 	if _force_crash_at_override >= 1.0:
 		_crash_at = _force_crash_at_override
@@ -81,15 +80,6 @@ func _run(context) -> void:
 	_send_rpc("_rpc_rocket_launched", [_start_time_ms, _crash_at])
 	# Host also processes the rocket locally as if it received the broadcast.
 	_on_rocket_launched_local(_start_time_ms, _crash_at)
-
-func _send_rpc(method_name: String, args: Array = []) -> void:
-	if _multiplayer_node == null:
-		return
-	match args.size():
-		0: _multiplayer_node.rpc(method_name)
-		1: _multiplayer_node.rpc(method_name, args[0])
-		2: _multiplayer_node.rpc(method_name, args[0], args[1])
-		3: _multiplayer_node.rpc(method_name, args[0], args[1], args[2])
 
 func _on_rocket_launched_local(start_time_ms: int, crash_at: float) -> void:
 	_start_time_ms = start_time_ms
@@ -232,15 +222,6 @@ func _rpc_cash_out_rejected(_peer_id: int) -> void:
 	# Local UI hook only; data already correct on host.
 	pass
 
-# Targeted send (for rejecting back to the originator only).
-func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array) -> void:
-	if _multiplayer_node == null:
-		return
-	match args.size():
-		0: _multiplayer_node.rpc_id(peer_id, method_name)
-		1: _multiplayer_node.rpc_id(peer_id, method_name, args[0])
-		2: _multiplayer_node.rpc_id(peer_id, method_name, args[0], args[1])
-
 const EventResult = preload("res://scripts/events/event_result.gd")
 
 # Builds the EventResult per spec section 6.1. Survivors:
@@ -294,6 +275,13 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 			var um = float(p_mods.get("underdog_multiplier", 1.0))
 			if um != 1.0:
 				chip_delta = int(chip_delta * um)
+			# Sub-project #6 Plan A: Leader Cursed reduces leader's survivor reward
+			if context != null:
+				var ht = context.house_twist
+				if ht.get("type", "") == "leader_cursed" and int(ht.get("params", {}).get("leader_peer_id", 0)) == pid:
+					var lc_mult = float(ht.get("params", {}).get("reward_multiplier", 1.0))
+					if lc_mult != 1.0:
+						chip_delta = int(chip_delta * lc_mult)
 			# Late Cash bonus
 			if p_mods.get("late_cash_bonus", false):
 				var threshold = float(p_mods.get("late_cash_threshold", 5.0))

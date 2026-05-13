@@ -91,3 +91,14 @@ Run by launching two `godot --path .` windows on this machine.
 | 13 | Card Cannon: bust at 22+ loses wager | Player draws past 21; chip_delta = -wager; no Crown |
 | 14 | Card Cannon: Insurance halves bust | Player loads Insurance in BET_LOADOUT; busts in Card Cannon; chip_delta = -wager/2 |
 | 15 | 3-event rotation produces variety | 5-event Quick Clash visits at least 2 of the 3 events (uniform random; ~60% probability of all 3) |
+
+## Sub-project #6 Plan A additions
+
+| # | Scenario | Pass criteria |
+|---|----------|---------------|
+| 16 | Double Bounty Round doubles payouts | Twist announced at start of event 2-5; bounty resolution awards 300 chips instead of 150 (Leader bounty) and proportionally for Heat bounties |
+| 17 | No Insurance disables card | Player has Insurance in loadout; twist announced; submit_card_play("insurance") returns rejection toast "Insurance disabled this event"; Insurance modifier never set in event_modifiers |
+| 18 | Leader Cursed reduces survivor reward | Chip leader identified at HOUSE_TWIST; after event, leader's chip_delta is 75% of what their wager × multiplier would normally produce; non-leaders unaffected |
+| 19 | Power Surge deals bonus cards | Every active peer receives +1 random non-sabotage common card at HOUSE_TWIST; the announce broadcast _rpc_house_twist_announced carries params.cards_dealt {peer_id → card_id}; each client mirrors the card into MatchPlayer.hand |
+| 20 | No-repeat event selection | Across a 5-event Quick Clash, no two consecutive events share the same event_id |
+| 21 | No twist on event 1 | First event's HOUSE_REVEAL sees state.house_twist == {} (no twist banner shown) |

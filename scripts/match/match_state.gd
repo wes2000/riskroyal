@@ -19,6 +19,11 @@ var shop_done_peers: Array = []      # Array of peer_id ints — scalars only
 var event_modifiers: Dictionary = {}
 var pending_card_effects: Array = []
 
+# Sub-project #6 (House Twists)
+var house_twist: Dictionary = {}           # active twist: {type: String, params: Dictionary} or {}
+var last_twist_type: String = ""           # for no-repeat selection filter
+var previous_event_id: String = ""         # for no-repeat event-pool selection
+
 func seed_rng() -> void:
 	rng = RandomNumberGenerator.new()
 	rng.seed = rng_seed
@@ -52,6 +57,9 @@ func to_dict() -> Dictionary:
 		"shop_done_peers": shop_done_peers.duplicate(),
 		"event_modifiers": event_modifiers.duplicate(true),
 		"pending_card_effects": pending_card_effects.duplicate(true),
+		"house_twist": house_twist.duplicate(true),
+		"last_twist_type": last_twist_type,
+		"previous_event_id": previous_event_id,
 	}
 
 static func from_dict(d: Dictionary) -> RefCounted:
@@ -66,6 +74,9 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	s.shop_done_peers = d.get("shop_done_peers", []).duplicate()
 	s.event_modifiers = d.get("event_modifiers", {}).duplicate(true)
 	s.pending_card_effects = d.get("pending_card_effects", []).duplicate(true)
+	s.house_twist = d.get("house_twist", {}).duplicate(true)
+	s.last_twist_type = d.get("last_twist_type", "")
+	s.previous_event_id = d.get("previous_event_id", "")
 	s.players = []
 	for raw in d.get("players", []):
 		s.players.append(MatchPlayer.from_dict(raw))

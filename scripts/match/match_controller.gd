@@ -14,6 +14,7 @@ const CardEffectDispatcher = preload("res://scripts/match/card_effect_dispatcher
 const BountyResolver = preload("res://scripts/match/bounty_resolver.gd")
 const ShopController = preload("res://scripts/match/shop_controller.gd")
 const MatchRpcSender = preload("res://scripts/match/match_rpc_sender.gd")
+const HouseTwistController = preload("res://scripts/match/house_twist_controller.gd")
 
 signal phase_changed(new_phase: int)
 signal event_starting(event_id: String, event_index: int)
@@ -34,6 +35,7 @@ signal shop_opened(offered_card_ids: Array)
 signal shop_closed
 signal shop_purchase_confirmed(peer_id: int, card_id: String, cost_chips: int)
 signal shop_purchase_rejected(peer_id: int, card_id: String, reason: String)
+signal house_twist_announced(twist_dict: Dictionary)
 
 var state: MatchState
 var is_host: bool = false
@@ -271,6 +273,7 @@ func _enter_phase_behavior() -> void:
 			await _process_shop()
 			await _schedule_advance()
 		MatchPhase.Phase.HOUSE_TWIST:
+			_process_house_twist()
 			await _schedule_advance()
 		MatchPhase.Phase.MATCH_END:
 			_process_match_end()
@@ -292,9 +295,18 @@ func _process_ante_phase() -> void:
 		_send_rpc("_rpc_apply_deltas", [deltas])
 
 func _process_event_selection() -> void:
-	var pool = MatchConfig.EVENT_POOL
+	# Plan B will add: if state.house_twist.type == "lowest_chips_picks":
+	#   defer to async picker flow.
+	# Plan A: uniform random with no-repeat filter (sub-project #5 carry-forward).
+	var pool = MatchConfig.EVENT_POOL.duplicate()
+	if not state.previous_event_id.is_empty():
+		pool.erase(state.previous_event_id)
+		# Defensive: fall back to full pool if filter emptied candidates
+		if pool.is_empty():
+			pool = MatchConfig.EVENT_POOL.duplicate()
 	var idx = state.rng.randi() % pool.size()
 	state.current_event_id = pool[idx]
+	state.previous_event_id = state.current_event_id
 
 func _process_bet_loadout() -> void:
 	if not is_host:
@@ -328,6 +340,18 @@ func _all_active_ready(active_peer_ids: Array) -> bool:
 		if not state.pending_wagers.has(pid):
 			return false
 	return true
+
+func _process_house_twist() -> void:
+	if not is_host:
+		return
+	var twist = HouseTwistController.select_next_twist(state)
+	state.house_twist = twist
+	state.last_twist_type = twist.type
+	HouseTwistController.apply_pre_event_effects(state, twist)
+	# Broadcast AFTER apply_pre_event_effects: it mutates twist.params.cards_dealt
+	# in-place; clients need the complete dict including dealt card IDs.
+	_send_rpc("_rpc_house_twist_announced", [twist])
+	house_twist_announced.emit(twist)
 
 func _process_shop() -> void:
 	if not is_host:
@@ -414,6 +438,21 @@ func _rpc_shop_purchase_confirmed(peer_id: int, card_id: String, cost_chips: int
 func _rpc_shop_buy_rejected(card_id: String, reason: String) -> void:
 	shop_purchase_rejected.emit(0, card_id, reason)
 
+@rpc("authority", "call_remote", "reliable")
+func _rpc_house_twist_announced(twist_dict: Dictionary) -> void:
+	state.house_twist = twist_dict.duplicate(true)
+	state.last_twist_type = twist_dict.get("type", "")
+	# Power Surge: mirror the host's bonus-card deal into each client's
+	# local MatchPlayer.hand. Without this, clients show stale hands.
+	var cards_dealt: Dictionary = twist_dict.get("params", {}).get("cards_dealt", {})
+	for peer_id in cards_dealt:
+		var card_id: String = String(cards_dealt[peer_id])
+		for p in state.players:
+			if p.peer_id == int(peer_id):
+				p.hand.append(card_id)
+				break
+	house_twist_announced.emit(twist_dict)
+
 func submit_shop_buy(card_id: String) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
 	_send_rpc("_rpc_shop_buy_requested", [my_peer_id, card_id])
@@ -480,6 +519,19 @@ func _build_event_context():
 			ctx.wagers[p.peer_id] = ante
 	# Thread event_modifiers into the context so card effects + event runtime can read them.
 	ctx.event_modifiers = state.event_modifiers.duplicate(true)
+	# Sub-project #6 Plan A Task 8: thread house_twist + tuning_overrides
+	ctx.house_twist = state.house_twist.duplicate(true)
+	# tuning_overrides (Plan A wires infrastructure only; no Plan A twist
+	# uses this yet, but Plan B's Sudden Death may). If state.house_twist
+	# carries params.tuning_overrides, merge them into ctx.tuning AFTER
+	# the event populates defaults in _run.
+	# Note: the merge happens AFTER _run because event._run runs first
+	# (it's called by _process_main_event after _build_event_context).
+	# So we set a "pending overrides" key the event can read at end-of-_run,
+	# or we delay the merge. Cleanest: keep tuning_overrides in
+	# ctx.house_twist.params and let the event check it itself.
+	# For Plan A: no merge implementation; just the snapshot. Plan B may
+	# revisit.
 	return ctx
 
 func _on_event_complete(result) -> void:
@@ -774,6 +826,10 @@ func _rpc_card_play_requested(peer_id: int, card_id: String, target_peer_id: int
 		return  # silent reject; timing mismatch
 	if card.get("target_required", false) and target_peer_id == 0:
 		_send_rpc_to_peer(peer_id, "_rpc_card_play_rejected", [card_id, "target_required"])
+		return
+	# Sub-project #6 Plan A: No Insurance twist gates the Insurance card.
+	if card_id == "insurance" and state.house_twist.get("type", "") == "no_insurance":
+		_send_rpc_to_peer(peer_id, "_rpc_card_play_rejected", [card_id, "no_insurance_twist"])
 		return
 	var ctx = _build_event_context()
 	# For self-targeting cards, pass peer_id as target_peer_id; for target-required

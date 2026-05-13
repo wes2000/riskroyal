@@ -83,3 +83,27 @@ func test_card_play_multiple_cards_accumulates_modifiers():
 	c._rpc_card_play_requested(1, "heat_shield", 0, null)
 	assert_true(c.state.event_modifiers.get(1, {}).get("insurance_pre", false))
 	assert_true(c.state.event_modifiers.get(1, {}).get("heat_shield", false))
+
+func test_insurance_rejected_under_no_insurance_twist():
+	# Wrapper rejection path: under no_insurance twist, the host returns
+	# _rpc_card_play_rejected to the originating peer and does NOT mutate
+	# state (no modifier set, no card consumed).
+	var d = _new_host_with_fake()
+	var c = d.controller
+	c.state.phase = MatchPhase.Phase.BET_LOADOUT
+	c.state.house_twist = {"type": "no_insurance", "params": {}}
+	d.fake.rpc_calls.clear()
+	c._rpc_card_play_requested(1, "insurance", 0, null)
+	# Modifier must NOT be set.
+	assert_false(c.state.event_modifiers.get(1, {}).get("insurance_pre", false),
+		"insurance_pre modifier must not be set when no_insurance twist is active")
+	# Card must NOT be recorded as played.
+	assert_false("insurance" in c.state.players[0].played_this_event,
+		"insurance must not be added to played_this_event when rejected")
+	# A _rpc_card_play_rejected RPC must have been sent with reason "no_insurance_twist".
+	var rejected = false
+	for call in d.fake.rpc_calls:
+		if call.method == "_rpc_card_play_rejected" and call.args.size() >= 2 and call.args[1] == "no_insurance_twist":
+			rejected = true
+			break
+	assert_true(rejected, "_rpc_card_play_rejected must be sent with reason no_insurance_twist")

@@ -20,9 +20,6 @@ var _finished: bool = false
 var _stashed_context = null
 var _rng: RandomNumberGenerator = null  # seeded from context.rng_seed in _run
 
-# RPC routing
-var _multiplayer_node = null
-
 # Test seams
 var _force_next_rank_override: int = -1   # negative = use RNG
 
@@ -60,13 +57,17 @@ func submit_lock() -> void:
 	_send_rpc("_rpc_lock_requested", [my_peer_id])
 
 func _run(context) -> void:
+	super._run(context)  # base self-wires _multiplayer_node
+	context.tuning["target_score"] = MatchConfig.CARD_CANNON_TARGET_SCORE
+	context.tuning["payout_bands"] = {
+		"low": MatchConfig.CARD_CANNON_PAYOUT_BAND_LOW,
+		"medium": MatchConfig.CARD_CANNON_PAYOUT_BAND_MEDIUM,
+		"strong": MatchConfig.CARD_CANNON_PAYOUT_BAND_STRONG,
+		"heavy": MatchConfig.CARD_CANNON_PAYOUT_BAND_HEAVY,
+		"perfect": MatchConfig.CARD_CANNON_PAYOUT_BAND_PERFECT,
+	}
 	_stashed_context = context
 	_is_host = context.is_host
-	# Self-wire _multiplayer_node when in-tree and not explicitly injected
-	# (e.g. by tests). Matches RocketClashEvent's pattern so production RPC
-	# routing works whenever MatchController adds the event to the scene tree.
-	if _multiplayer_node == null and is_inside_tree():
-		_multiplayer_node = self
 	# Derive a per-event RNG from context.rng_seed (EventContext exposes
 	# rng_seed, not rng). Storing as an instance field so successive draws
 	# advance the same sequence — same pattern as RocketClashEvent.
@@ -85,28 +86,6 @@ func _run(context) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _rpc_card_cannon_started() -> void:
 	pass  # clients render the scene; no time sync needed
-
-func _send_rpc(method_name: String, args: Array = []) -> void:
-	if _multiplayer_node == null:
-		return
-	match args.size():
-		0: _multiplayer_node.rpc(method_name)
-		1: _multiplayer_node.rpc(method_name, args[0])
-		2: _multiplayer_node.rpc(method_name, args[0], args[1])
-		3: _multiplayer_node.rpc(method_name, args[0], args[1], args[2])
-		4: _multiplayer_node.rpc(method_name, args[0], args[1], args[2], args[3])
-		_:
-			push_error("CardCannonEvent._send_rpc: unsupported arity %d" % args.size())
-
-func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array = []) -> void:
-	if _multiplayer_node == null:
-		return
-	match args.size():
-		0: _multiplayer_node.rpc_id(peer_id, method_name)
-		1: _multiplayer_node.rpc_id(peer_id, method_name, args[0])
-		2: _multiplayer_node.rpc_id(peer_id, method_name, args[0], args[1])
-		_:
-			push_error("CardCannonEvent._send_rpc_to_peer: unsupported arity %d" % args.size())
 
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_draw_requested(peer_id: int) -> void:
@@ -244,6 +223,13 @@ static func compute_event_result(context, hands: Dictionary, locked_scores: Dict
 			var um = float(p_mods.get("underdog_multiplier", 1.0))
 			if um != 1.0:
 				chip_delta = int(chip_delta * um)
+			# Sub-project #6 Plan A: Leader Cursed reduces leader's survivor reward
+			if context != null:
+				var ht = context.house_twist
+				if ht.get("type", "") == "leader_cursed" and int(ht.get("params", {}).get("leader_peer_id", 0)) == pid:
+					var lc_mult = float(ht.get("params", {}).get("reward_multiplier", 1.0))
+					if lc_mult != 1.0:
+						chip_delta = int(chip_delta * lc_mult)
 			result.per_player[pid] = {
 				"chip_delta": chip_delta, "crown_delta": 0, "heat_delta": 0,
 				"bust": false, "cash_out_at": 0.0,

@@ -54,6 +54,11 @@ static func resolve(state, result) -> Array:
 			awards.append({"claimant_peer_id": 0, "bounty_dict": bounty.to_dict(), "reward_chips": 0})
 			continue
 		var reward = Bounty.compute_reward(bounty)
+		# Sub-project #6 Plan A: Double Bounty twist multiplier (pure
+		# state read; Bounty.compute_reward stays unchanged).
+		if state.house_twist.get("type", "") == "double_bounty":
+			var mult = float(state.house_twist.get("params", {}).get("reward_multiplier", 1.0))
+			reward = int(reward * mult)
 		if claimants.size() == 1:
 			var claimant = _find_player(state, claimants[0])
 			if claimant != null:
