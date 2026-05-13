@@ -77,6 +77,10 @@ var bet_loadout_timeout_sec_override: float = -1.0
 # Negative = use MatchConfig.SHOP_TIMEOUT_SEC. 0.0 = synchronous open, no auto-close.
 var shop_timeout_sec_override: float = -1.0
 
+# Test seam: override EVENT_PICKER phase timeout. -1 = use MatchConfig.
+# 0.0 = bypass timer entirely (synchronous host fallback).
+var event_picker_timeout_sec_override: float = -1.0
+
 func _default_event_factory(path: String):
 	var ps = load(path)
 	if ps == null:
@@ -97,6 +101,11 @@ func _shop_timeout_sec() -> float:
 	if shop_timeout_sec_override >= 0.0:
 		return shop_timeout_sec_override
 	return float(MatchConfig.SHOP_TIMEOUT_SEC)
+
+func _event_picker_timeout_sec() -> float:
+	if event_picker_timeout_sec_override >= 0.0:
+		return event_picker_timeout_sec_override
+	return float(MatchConfig.EVENT_PICKER_TIMEOUT_SEC)
 
 func _start_event_timeout_watchdog() -> void:
 	if not is_inside_tree():
@@ -261,7 +270,7 @@ func _enter_phase_behavior() -> void:
 			_process_ante_phase()
 			await _schedule_advance()
 		MatchPhase.Phase.EVENT_SELECTION:
-			_process_event_selection()
+			await _process_event_selection()
 			await _schedule_advance()
 		MatchPhase.Phase.BET_LOADOUT:
 			await _process_bet_loadout()
@@ -302,18 +311,68 @@ func _process_ante_phase() -> void:
 		_send_rpc("_rpc_apply_deltas", [deltas])
 
 func _process_event_selection() -> void:
-	# Plan B will add: if state.house_twist.type == "lowest_chips_picks":
-	#   defer to async picker flow.
-	# Plan A: uniform random with no-repeat filter (sub-project #5 carry-forward).
+	# Plan B Task 4: defer to async picker flow when the twist is active.
+	if state.house_twist.get("type", "") == "lowest_chips_picks":
+		await _process_event_selection_with_picker()
+		return
+	# Plan A path: uniform random with no-repeat filter.
+	_select_event_with_no_repeat()
+	# Sub-project #6 Plan B Task 6 will add finalize_pending_params here
+	# (so Sudden Death's condition gets resolved); placeholder hook below.
+	HouseTwistController.finalize_pending_params(state)
+
+func _select_event_with_no_repeat() -> void:
 	var pool = MatchConfig.EVENT_POOL.duplicate()
 	if not state.previous_event_id.is_empty():
 		pool.erase(state.previous_event_id)
-		# Defensive: fall back to full pool if filter emptied candidates
 		if pool.is_empty():
 			pool = MatchConfig.EVENT_POOL.duplicate()
 	var idx = state.rng.randi() % pool.size()
 	state.current_event_id = pool[idx]
 	state.previous_event_id = state.current_event_id
+
+# Plan B Task 4: Lowest Chips Picks async picker flow.
+# Host broadcasts picker UI start, awaits choice OR 10-second timeout,
+# falls back to uniform-random pick from options on timeout. The host
+# ALWAYS sets state.current_event_id before returning so the phase
+# machine advances cleanly.
+func _process_event_selection_with_picker() -> void:
+	if not is_host:
+		return
+	var picker_peer_id = int(state.house_twist.params.get("picker_peer_id", 0))
+	var options: Array = state.house_twist.params.get("options", [])
+	if options.is_empty():
+		# Defensive: no options to pick from. Fall back to Plan A path.
+		_select_event_with_no_repeat()
+		HouseTwistController.finalize_pending_params(state)
+		return
+	_send_rpc("_rpc_event_picker_started", [picker_peer_id, options])
+	# Clear any stale prior pick
+	state.current_event_id = ""
+	var timeout_sec = _event_picker_timeout_sec()
+	if timeout_sec <= 0.0:
+		# Synchronous test path: skip the await entirely, fall through to
+		# fallback. Tests can also pre-submit a choice via _rpc_event_picker_choice
+		# before calling _process_event_selection if they want the happy path.
+		pass
+	elif not is_inside_tree():
+		# Detached controller (some tests): no SceneTree for timer.
+		pass
+	else:
+		var timer = get_tree().create_timer(timeout_sec)
+		while timer.time_left > 0.0:
+			if not state.current_event_id.is_empty():
+				break  # picker submitted; _rpc_event_picker_choice set the id
+			await get_tree().process_frame
+	# Host fallback if no pick landed
+	var reason = "submitted"
+	if state.current_event_id.is_empty():
+		var idx = state.rng.randi() % options.size()
+		state.current_event_id = options[idx]
+		reason = "timeout"
+	state.previous_event_id = state.current_event_id
+	HouseTwistController.finalize_pending_params(state)
+	_send_rpc("_rpc_event_picker_resolved", [state.current_event_id, reason])
 
 func _process_bet_loadout() -> void:
 	if not is_host:

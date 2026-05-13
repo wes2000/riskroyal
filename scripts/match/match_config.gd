@@ -27,6 +27,8 @@ const RESOLUTION_STEP_DELAY_MS: int = 600
 
 const EVENT_TIMEOUT_SEC: int = 120
 
+const EVENT_PICKER_TIMEOUT_SEC: int = 10
+
 # Small delay used to pace no-op phase transitions (HOUSE_REVEAL, BET_LOADOUT,
 # BOUNTY_HEAT_UPDATE->SHOP, SHOP, HOUSE_TWIST) so HUD updates animate rather
 # than blurring past in one frame.
