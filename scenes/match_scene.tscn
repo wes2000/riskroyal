@@ -25,6 +25,8 @@ text = "Loading match..."
 [node name="EventSlot" type="Container" parent="VBox"]
 custom_minimum_size = Vector2(0, 200)
 
+[node name="CashOutSlot" type="Container" parent="VBox"]
+
 [node name="ShopSlot" type="Container" parent="VBox"]
 
 [node name="ResolutionSlot" type="Container" parent="VBox"]
