@@ -86,6 +86,19 @@ func _name_for(peer_id: int) -> String:
 		return "P%d" % peer_id
 	return String(p.name)
 
+func _format_debt_garnish_with_names(payload: Dictionary) -> String:
+	# Alpha remediation Phase G S2 (§10.4): instance-bound twin of the
+	# static debt_garnish arm; substitutes display names via _name_for.
+	var entries = payload.get("garnishes", [])
+	if entries.is_empty():
+		return ""
+	var parts: Array = []
+	for e in entries:
+		var pid = int(e.get("peer_id", 0))
+		var amount = int(e.get("garnish", 0))
+		parts.append("House garnished %d chips from %s's winnings." % [amount, _name_for(pid)])
+	return "\n".join(parts)
+
 func _flush_modifier_notes() -> void:
 	for note in _pending_modifier_notes:
 		_append_line(note)
@@ -97,6 +110,15 @@ func _on_resolution_step(step_name: String, payload: Dictionary) -> void:
 	# read the "why" alongside the cash-out / chip outcome.
 	if step_name == "painful_reveal":
 		_flush_modifier_notes()
+	# Alpha remediation Phase G S2 (§10.4): live-overlay path swaps the
+	# static "P<id>" placeholder for the player's display name resolved
+	# from controller.state. Falls back to the static formatter when no
+	# entries are present.
+	if step_name == "debt_garnish":
+		var rendered = _format_debt_garnish_with_names(payload)
+		if rendered != "":
+			_append_line(rendered)
+		return
 	# Plan C Task 7: crown_awards step with delta >= 2 renders as a
 	# structured sequenced animation instead of a static string.
 	if step_name == "crown_awards":
@@ -243,6 +265,22 @@ static func format_resolution_step(step_name: String, payload: Dictionary) -> St
 			for d in deltas:
 				parts.append(_format_crown_award_entry(int(d.get("peer_id", 0)), int(d.get("delta", 0))))
 			return "Crowns: %s" % ", ".join(parts)
+		"debt_garnish":
+			# Alpha remediation Phase G S2 (§10.4): House-cut line at
+			# painful-reveal time. format_resolution_step is static, so
+			# names render as "P<id>"; live overlays dispatch through
+			# _on_resolution_step which can swap in display names via
+			# _name_for. Empty payload → empty string so the overlay
+			# can no-op without rendering "(debt_garnish)".
+			var entries = payload.get("garnishes", [])
+			if entries.is_empty():
+				return ""
+			var parts: Array = []
+			for e in entries:
+				var pid = int(e.get("peer_id", 0))
+				var amount = int(e.get("garnish", 0))
+				parts.append("House garnished %d chips from P%d's winnings." % [amount, pid])
+			return "\n".join(parts)
 		"painful_reveal":
 			# Rocket Clash extended payload (also fits future events that follow
 			# the cash_outs_summary contract from spec section 11).
