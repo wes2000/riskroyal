@@ -223,6 +223,7 @@ func _rpc_cash_out_rejected(_peer_id: int) -> void:
 	pass
 
 const EventResult = preload("res://scripts/events/event_result.gd")
+const EventHelpers = preload("res://scripts/match/event_helpers.gd")
 
 # Builds the EventResult per spec section 6.1. Survivors:
 # chip_delta = wager × cash_out_at; bust: false; cash_out_at recorded.
@@ -275,13 +276,8 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 			var um = float(p_mods.get("underdog_multiplier", 1.0))
 			if um != 1.0:
 				chip_delta = int(chip_delta * um)
-			# Sub-project #6 Plan A: Leader Cursed reduces leader's survivor reward
-			if context != null:
-				var ht = context.house_twist
-				if ht.get("type", "") == "leader_cursed" and int(ht.get("params", {}).get("leader_peer_id", 0)) == pid:
-					var lc_mult = float(ht.get("params", {}).get("reward_multiplier", 1.0))
-					if lc_mult != 1.0:
-						chip_delta = int(chip_delta * lc_mult)
+			# Sub-project #7 Plan A Task 2: Leader Cursed via EventHelpers
+			chip_delta = EventHelpers.apply_leader_cursed(context, pid, chip_delta)
 			# Late Cash bonus
 			if p_mods.get("late_cash_bonus", false):
 				var threshold = float(p_mods.get("late_cash_threshold", 5.0))
@@ -311,21 +307,11 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 		if winner_mods.get("heat_shield", false):
 			heat_delta = int(heat_delta / 2)  # Heat Shield halves heat_delta (1 -> 0)
 		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
-	# Sub-project #6 Plan B Task 7: Sudden Death Jackpot bonus crown.
-	# Each surviving player whose cash_out > 5.0 earns +1 crown_delta
-	# (stacks with regular Crown — only place where crown_delta = 2).
-	# Sub-project #7: extract to EventHelpers.apply_sudden_death_bonus.
-	if context != null:
-		var ht = context.house_twist
-		if ht.get("type", "") == "sudden_death_jackpot" \
-				and String(ht.get("params", {}).get("condition", "")) == "cash_out_over_5x":
-			for player in context.players:
-				var pid = player.peer_id
-				if busted.has(pid):
-					continue
-				var co = float(cash_outs.get(pid, 0.0))
-				if co > 5.0:
-					result.per_player[pid].crown_delta = int(result.per_player[pid].get("crown_delta", 0)) + 1
+	# Sub-project #7 Plan A Task 2: Sudden Death Jackpot via EventHelpers
+	for player in context.players:
+		var pid = player.peer_id
+		var survives = not busted.has(pid) and float(cash_outs.get(pid, 0.0)) > 5.0
+		EventHelpers.apply_sudden_death_bonus(context, pid, result.per_player, "cash_out_over_5x", survives)
 	result.painful_reveal = {
 		"crash_at": crash_at,
 		"winner_peer_id": winner_peer_id,
