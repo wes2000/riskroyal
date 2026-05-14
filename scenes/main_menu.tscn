@@ -34,6 +34,10 @@ text = "Host"
 layout_mode = 2
 text = "Join"
 
+[node name="PracticeButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Practice vs Bots"
+
 [node name="JoinDialog" type="AcceptDialog" parent="."]
 title = "Enter join code"
 size = Vector2i(300, 100)
