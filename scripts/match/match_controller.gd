@@ -41,6 +41,9 @@ signal event_picker_resolved(chosen_path: String, reason: String)
 
 var state: MatchState
 var is_host: bool = false
+var host_peer_id: int = 1  # set from MatchStart.host_peer_id in start_match; clients
+                           # receive it via _rpc_phase_changed context in Plan B.
+                           # Tests set it directly after construction.
 var _multiplayer_node = null  # for RPC routing in production; null in unit tests
 var _rpc_sender: MatchRpcSender = null
 
@@ -153,6 +156,7 @@ func start_match(match_start) -> void:
 	if _multiplayer_node == null and is_inside_tree():
 		_multiplayer_node = self
 		_rpc_sender = MatchRpcSender.new(self)
+	host_peer_id = match_start.host_peer_id
 	# Build MatchPlayer records from MatchStart seats.
 	state.players = []
 	var player_count = match_start.seats.size()
@@ -185,24 +189,29 @@ func _send_rpc(method_name: String, args: Array = []) -> void:
 func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array = []) -> void:
 	_rpc_sender.send_to_peer(peer_id, method_name, args)
 
+func _send_rpc_to_host(method_name: String, args: Array = []) -> void:
+	_rpc_sender.send_to_host(host_peer_id, method_name, args)
+
 # Public: called locally by BetLoadoutOverlay's Ready handler.
 func submit_loadout_change(loadout: Array) -> void:
-	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
-	_send_rpc("_rpc_loadout_set", [my_peer_id, loadout])
+	var my_peer_id = multiplayer.get_unique_id() if is_inside_tree() else 1
+	_send_rpc_to_host("_rpc_loadout_set", [my_peer_id, loadout])
 
 func submit_card_play(card_id: String, target_peer_id: int = 0, params = null) -> void:
-	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
-	_send_rpc("_rpc_card_play_requested", [my_peer_id, card_id, target_peer_id, params])
+	var my_peer_id = multiplayer.get_unique_id() if is_inside_tree() else 1
+	# Sub-project #7 Plan A Task 12: use rpc_id(host_peer_id) so only the
+	# host receives; previously broadcast to all peers.
+	_send_rpc_to_host("_rpc_card_play_requested", [my_peer_id, card_id, target_peer_id, params])
 
 func submit_wager(amount: int) -> void:
-	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
-	_send_rpc("_rpc_set_wager", [my_peer_id, amount])
+	var my_peer_id = multiplayer.get_unique_id() if is_inside_tree() else 1
+	_send_rpc_to_host("_rpc_set_wager", [my_peer_id, amount])
 
 # Public: called locally by EventPickerOverlay button presses on the
 # picker peer.
 func submit_event_pick(chosen_path: String) -> void:
-	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
-	_send_rpc("_rpc_event_picker_choice", [my_peer_id, chosen_path])
+	var my_peer_id = multiplayer.get_unique_id() if is_inside_tree() else 1
+	_send_rpc_to_host("_rpc_event_picker_choice", [my_peer_id, chosen_path])
 
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_set_wager(peer_id: int, amount: int) -> void:
