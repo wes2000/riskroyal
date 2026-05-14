@@ -34,3 +34,19 @@ func test_format_leaderboard_sorts_by_crowns_then_chips():
 	assert_eq(int(out[1].rank), 2)
 	assert_eq(int(out[2].peer_id), 1, "P1 (1 crown, 400 chips) ranks third")
 	assert_eq(int(out[2].rank), 3)
+
+func test_format_event_status_rocket_clash():
+	var s = SpectatorOverlay.format_event_status("rocket_clash", {"name": "P3", "multiplier": 4.2})
+	assert_eq(s, "P3 riding @ 4.2x")
+
+func test_format_event_status_bomb_pot():
+	var s = SpectatorOverlay.format_event_status("bomb_pot", {"name": "P3", "bomb_remaining_sec": 5})
+	assert_eq(s, "P3 in, 5s to bomb")
+
+func test_format_event_status_card_cannon():
+	var s = SpectatorOverlay.format_event_status("card_cannon", {"name": "P3", "locked_score": 17, "target_score": 21})
+	assert_eq(s, "P3 score: 17/21")
+
+func test_format_event_status_unknown_returns_empty():
+	var s = SpectatorOverlay.format_event_status("not_an_event", {})
+	assert_eq(s, "")
