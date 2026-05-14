@@ -20,9 +20,12 @@ static func apply(_context, target_peer_id: int, params = null) -> Dictionary:
 		caller_peer_id = int(params.get("caller_peer_id", 0))
 	if caller_peer_id == target_peer_id:
 		return {"applied": false, "type": "cash_out_delay"}
+	# Alpha remediation Phase C Change 4 (§8.4): record caller as source so
+	# the bounty resolver can route bust_after_sabotage rewards.
 	return {
 		"type": "cash_out_delay",
 		"applied": true,
+		"source": caller_peer_id,
 		"target": target_peer_id,
 		"delay_ms": 750,
 	}

@@ -61,14 +61,21 @@ static func compute_twist_params(twist_type: String, state) -> Dictionary:
 			var leader_id = _find_chip_leader_peer_id(state)
 			return {
 				"leader_peer_id": leader_id,
+				# Alpha remediation Phase F §12.3: announcer/overlay
+				# resolve <Name> from twist_dict.target_peer_id.
+				"target_peer_id": leader_id,
 				"reward_multiplier": 0.75,
 			}
 		"power_surge":
 			# cards_dealt populated by apply_pre_event_effects below
 			return {"cards_dealt": {}}
 		"lowest_chips_picks":
+			var picker_id = _find_lowest_chips_peer_id(state)
 			return {
-				"picker_peer_id": _find_lowest_chips_peer_id(state),
+				"picker_peer_id": picker_id,
+				# Alpha remediation Phase F §12.3: announcer/overlay
+				# resolve <Name> from twist_dict.target_peer_id.
+				"target_peer_id": picker_id,
 				"options": _shuffled_event_pool(state),
 				"timeout_sec": 10,
 			}

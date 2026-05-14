@@ -153,7 +153,9 @@ func test_compute_event_result_crown_to_last_puller():
 	assert_eq(result.per_player[2].crown_delta, 1, "P2 last-puller wins Crown")
 	assert_eq(result.per_player[1].crown_delta, 0)
 	assert_eq(result.per_player[3].crown_delta, 0)
-	assert_eq(result.per_player[2].heat_delta, 1, "Crown winner gets +1 heat")
+	# Phase C Change 3: HeatRules-scaled Heat. P2 pulled at 12000ms on a 15s bomb
+	# (ratio = 0.80) -> bomb_pot_heat returns 3 (>= 0.80 tier).
+	assert_eq(result.per_player[2].heat_delta, 3, "0.80 ratio late-pull = +3 Heat")
 
 func test_compute_event_result_crown_tie_breaks_by_seat_index():
 	var ctx = _make_context(2, {1: 100, 2: 100}, {})
@@ -191,4 +193,6 @@ func test_compute_event_result_heat_shield_halves_winner_heat():
 	var timestamps = {1: 9000, 2: 7000}  # P1 last puller
 	var result = BombPotEvent.compute_event_result(ctx, 15.0, locked, pulled, timestamps)
 	assert_eq(result.per_player[1].crown_delta, 1, "P1 wins Crown")
-	assert_eq(result.per_player[1].heat_delta, 0, "Heat Shield halves 1 -> 0")
+	# Phase C Change 3: P1 pulled at 9000ms on 15s bomb (ratio=0.60, won_crown
+	# tier) -> base 2 Heat; Heat Shield floors to 1.
+	assert_eq(result.per_player[1].heat_delta, 1, "Heat Shield halves 2 -> 1")

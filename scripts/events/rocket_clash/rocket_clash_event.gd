@@ -140,6 +140,20 @@ func _finish() -> void:
 	for pid in busted:
 		_emit_status_changed(_stashed_context, pid, "BUSTED")
 	var result = compute_event_result(_stashed_context, _crash_at, _cash_outs, busted)
+	# Phase C Change 4 (§8.4): record sabotage attribution. If a busted
+	# target had an active cash-out delay, the source becomes the failure
+	# cause; the BountyResolver routes "bust_after_sabotage" + "saboteur"
+	# claim_mode rewards based on these fields.
+	for pid in busted:
+		if not _pending_cash_out_delays.has(pid):
+			continue
+		var entry = _pending_cash_out_delays[pid]
+		var src = 0
+		if entry is Dictionary:
+			src = int(entry.get("source", 0))
+		if src != 0 and result.per_player.has(pid):
+			result.per_player[pid]["sabotaged_by"] = [src]
+			result.per_player[pid]["failure_caused_by"] = src
 	event_complete.emit(result)
 
 # RPC receiver for clients (and the host's own local invocation via _on_rocket_launched_local)
@@ -178,8 +192,13 @@ func _current_multiplier_host() -> float:
 	var growth = _growth_rate_override if _growth_rate_override >= 0.0 else MatchConfig.ROCKET_GROWTH_RATE
 	return multiplier_at(elapsed_ms, growth)
 
-func set_cash_out_delay(peer_id: int, delay_ms: int) -> void:
-	_pending_cash_out_delays[peer_id] = delay_ms
+func set_cash_out_delay(peer_id: int, delay_ms: int, source_peer_id: int = 0) -> void:
+	# Phase C Change 4 (§8.4): track sabotage source for attribution.
+	# Stored as a Dictionary so attribution lookups don't need a separate map.
+	_pending_cash_out_delays[peer_id] = {
+		"delay_ms": delay_ms,
+		"source": source_peer_id,
+	}
 
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_cash_out_requested(peer_id: int, snapshot_mult: float) -> void:
@@ -194,10 +213,16 @@ func _rpc_cash_out_requested(peer_id: int, snapshot_mult: float) -> void:
 		return
 	# Cash-Out Jammer delay (Plan B). Track was_delayed locally so the
 	# relaxed tolerance branch below fires even after we erase the entry.
+	# Phase C Change 4 (§8.4): entries are now Dictionaries carrying source
+	# attribution; we DON'T erase the entry here so _finish can look up
+	# the sabotage source if the target busts during the wait.
 	var was_delayed = false
 	if _pending_cash_out_delays.has(peer_id):
-		var delay_ms = _pending_cash_out_delays[peer_id]
-		_pending_cash_out_delays.erase(peer_id)
+		var entry = _pending_cash_out_delays[peer_id]
+		var delay_ms = int(entry.get("delay_ms", 0)) if entry is Dictionary else int(entry)
+		# Mark consumed but keep the source attribution available.
+		entry["consumed"] = true
+		_pending_cash_out_delays[peer_id] = entry
 		was_delayed = true
 		if delay_ms > 0:
 			await get_tree().create_timer(delay_ms / 1000.0).timeout
@@ -228,6 +253,7 @@ func _rpc_cash_out_rejected(_peer_id: int) -> void:
 
 const EventResult = preload("res://scripts/events/event_result.gd")
 const EventHelpers = preload("res://scripts/match/event_helpers.gd")
+const HeatRules = preload("res://scripts/match/heat_rules.gd")
 
 # Builds the EventResult per spec section 6.1. Survivors:
 # chip_delta = wager × cash_out_at; bust: false; cash_out_at recorded.
@@ -303,14 +329,19 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 				winner_cash_out = cash_out_at
 				winner_peer_id = pid
 				winner_name = player.name
-	# Award the Crown + heat_delta to the highest-cash-out survivor
+	# Crown to the highest-cash-out survivor; per-survivor Heat scales
+	# with cash_out_at via HeatRules (Alpha remediation Phase C Change 3).
 	if winner_peer_id != 0:
 		result.per_player[winner_peer_id]["crown_delta"] = 1
-		var winner_mods = modifiers.get(winner_peer_id, {})
-		var heat_delta = 1
-		if winner_mods.get("heat_shield", false):
-			heat_delta = int(heat_delta / 2)  # Heat Shield halves heat_delta (1 -> 0)
-		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
+	for player in context.players:
+		var pid = player.peer_id
+		if busted.has(pid):
+			continue  # busted players keep heat_delta = 0 (set above)
+		var cash_out_at = float(cash_outs.get(pid, 0.0))
+		var won_crown = (pid == winner_peer_id)
+		var base_heat = HeatRules.rocket_heat(cash_out_at, won_crown)
+		var p_mods_heat = modifiers.get(pid, {})
+		result.per_player[pid]["heat_delta"] = HeatRules.apply_heat_shield(base_heat, p_mods_heat)
 	# Sub-project #7 Plan A Task 2: Sudden Death Jackpot via EventHelpers
 	for player in context.players:
 		var pid = player.peer_id

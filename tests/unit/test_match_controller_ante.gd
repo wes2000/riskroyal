@@ -54,12 +54,18 @@ func test_ante_uses_event_index_for_amount():
 		assert_eq(p.chips, 800 - ante)
 
 func test_ante_player_with_insufficient_chips_sits_out():
+	# Alpha feel remediation Phase E §10.3: a broke player now auto-takes
+	# a House Loan when debt + 150 <= MAX_DEBT (300). To exercise the
+	# original skip path the player must also be locked out of the loan:
+	# set their debt high enough that debt + 150 > 300.
 	var c = _new_controller(2)
 	c.state.event_index = 4  # ante 100
-	c.state.players[0].chips = 50  # not enough
+	c.state.players[0].chips = 50  # not enough for ante
+	c.state.players[0].debt = 200  # 200 + 150 = 350 > MAX_DEBT 300 -> loan refused
 	c.state.phase = MatchPhase.Phase.ANTE
 	c._enter_phase_behavior()
 	assert_eq(c.state.players[0].chips, 50, "no deduction")
+	assert_eq(c.state.players[0].debt, 200, "loan refused, debt unchanged")
 	assert_false(c.state.players[0].is_active_this_event)
 	assert_eq(c.state.players[1].chips, 800 - 100, "other player paid")
 	assert_true(c.state.players[1].is_active_this_event)

@@ -52,6 +52,8 @@ static func apply(state, peer_id: int, effect: Dictionary, is_host: bool) -> voi
 			})
 		"place_bounty":
 			# Host-only state mutation; caller's wrapper handles _rpc_bounties_placed.
+			# Phase C Change 4 (§8.6): forward claim_mode (defaults to "placer"
+			# for the Place Bounty card so the placer claims solo on success).
 			if is_host:
 				var b = Bounty.new()
 				b.origin = "placed"
@@ -61,14 +63,17 @@ static func apply(state, peer_id: int, effect: Dictionary, is_host: bool) -> voi
 				b.placed_by = int(effect.get("placed_by", 0))
 				b.placed_at_event = int(effect.get("placed_at_event", state.event_index))
 				b.placed_at_target_heat = int(effect.get("placed_at_target_heat", 0))
+				b.claim_mode = String(effect.get("claim_mode", "placer"))
 				state.bounties.append(b)
 		"copycat_bet":
 			var caller = int(effect.get("source", peer_id))
 			var new_wager = int(effect.get("new_wager", 0))
 			state.pending_wagers[caller] = new_wager
 		"cash_out_delay":
+			# Phase C Change 4 (§8.4): preserve source for attribution.
 			state.pending_card_effects.append({
 				"type": "cash_out_delay",
+				"source": int(effect.get("source", 0)),
 				"target": int(effect.get("target", 0)),
 				"delay_ms": int(effect.get("delay_ms", 750)),
 			})

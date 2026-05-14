@@ -9,6 +9,7 @@ extends "res://scripts/events/event_node.gd"
 const MatchConfig = preload("res://scripts/match/match_config.gd")
 const EventResult = preload("res://scripts/events/event_result.gd")
 const EventHelpers = preload("res://scripts/match/event_helpers.gd")
+const HeatRules = preload("res://scripts/match/heat_rules.gd")
 
 # Per-round state
 var _hands: Dictionary = {}             # peer_id -> Array[int] ranks drawn
@@ -191,6 +192,46 @@ static func compute_score(hand: Array) -> int:
 		aces -= 1
 	return total
 
+# Alpha remediation Phase D Change 5 (§9.3): Card Cannon target selection.
+# Players may set their target via state.event_modifiers[pid][
+# "card_cannon_target_peer_id"] during BET_LOADOUT (typically via a card
+# or future picker UI). If no target is set or the explicit target is
+# invalid, auto-default to highest-Crown opponent, ties broken by Heat,
+# full ties broken by lowest seat_index. Self never auto-targets self;
+# inactive opponents are skipped.
+static func resolve_target_peer_id(context, shooter_peer_id: int) -> int:
+	if context == null:
+		return 0
+	# Explicit target from event_modifiers takes precedence.
+	var p_mods = context.event_modifiers.get(shooter_peer_id, {})
+	var explicit = int(p_mods.get("card_cannon_target_peer_id", 0))
+	if explicit != 0 and explicit != shooter_peer_id:
+		# Verify the explicit target is a real, active opponent.
+		for player in context.players:
+			if int(player.peer_id) == explicit and player.is_active_this_event:
+				return explicit
+		# Explicit target invalid — fall through to auto-default.
+	# Auto-default: highest crowns among active opponents, tie-break by
+	# heat, then by lowest seat_index.
+	var best_peer_id: int = 0
+	var best_crowns: int = -1
+	var best_heat: int = -1
+	var best_seat: int = 999999
+	for player in context.players:
+		if int(player.peer_id) == shooter_peer_id:
+			continue
+		if not player.is_active_this_event:
+			continue
+		var crowns = int(player.crowns)
+		var heat = int(player.heat)
+		var seat = int(player.seat_index)
+		if crowns > best_crowns or (crowns == best_crowns and heat > best_heat) or (crowns == best_crowns and heat == best_heat and seat < best_seat):
+			best_peer_id = int(player.peer_id)
+			best_crowns = crowns
+			best_heat = heat
+			best_seat = seat
+	return best_peer_id
+
 static func compute_event_result(context, hands: Dictionary, locked_scores: Dictionary, busted: Dictionary) -> RefCounted:
 	var result = EventResult.new()
 	result.event_id = "card_cannon"
@@ -244,19 +285,78 @@ static func compute_event_result(context, hands: Dictionary, locked_scores: Dict
 				winner_score = locked
 				winner_peer_id = pid
 				winner_seat = player.seat_index
-	# Crown + heat
+	# Crown to highest locked_score; per-survivor Heat scales via HeatRules
+	# (Alpha remediation Phase C Change 3 §7.4).
 	if winner_peer_id != 0 and winner_score > 0:
 		result.per_player[winner_peer_id]["crown_delta"] = 1
-		var winner_mods = modifiers.get(winner_peer_id, {})
-		var heat_delta = 1
-		if winner_mods.get("heat_shield", false):
-			heat_delta = int(heat_delta / 2)
-		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
+	for player in context.players:
+		var pid = player.peer_id
+		if busted.get(pid, false):
+			continue  # busted players keep heat_delta = 0
+		var locked = int(locked_scores.get(pid, 0))
+		var won_crown = (pid == winner_peer_id) and (winner_score > 0)
+		var base_heat = HeatRules.card_cannon_heat(locked, won_crown)
+		var p_mods_heat = modifiers.get(pid, {})
+		result.per_player[pid]["heat_delta"] = HeatRules.apply_heat_shield(base_heat, p_mods_heat)
 	# Sub-project #7 Plan A Task 4: Sudden Death Jackpot via EventHelpers
 	for player in context.players:
 		var pid = player.peer_id
 		var survives = not busted.get(pid, false) and int(locked_scores.get(pid, 0)) == 21
 		EventHelpers.apply_sudden_death_bonus(context, pid, result.per_player, "locked_at_perfect", survives)
+	# Alpha remediation Phase D Change 5 Task D.2 (§9.3): locked-score
+	# chip attacks. Each non-busted shooter fires at their resolved
+	# target. Attack scales with locked score per §9.3. Folded into
+	# chip_delta (Approach A per §9.4). Bonus per-player keys for the
+	# reveal: target_peer_id, attack_delta (shooter), incoming_attack
+	# (target). Perfect 21 also adds +1 bonus Heat on the shooter.
+	var attack_table = {
+		21: 100,   # perfect
+		20: 75, 19: 75,
+		18: 50, 17: 50, 16: 50,
+		15: 25, 14: 25, 13: 25, 12: 25, 11: 25,
+	}
+	for player in context.players:
+		var shooter_pid = int(player.peer_id)
+		if busted.get(shooter_pid, false):
+			continue  # busted shooters don't fire
+		var lscore = int(locked_scores.get(shooter_pid, 0))
+		if lscore <= 10:
+			# No attack tier — store 0 attack_delta for the reveal.
+			result.per_player[shooter_pid]["target_peer_id"] = 0
+			result.per_player[shooter_pid]["attack_delta"] = 0
+			continue
+		var target_pid = resolve_target_peer_id(context, shooter_pid)
+		if target_pid == 0:
+			result.per_player[shooter_pid]["target_peer_id"] = 0
+			result.per_player[shooter_pid]["attack_delta"] = 0
+			continue
+		var atk = int(attack_table.get(lscore, 25))
+		# Bonus heat for perfect 21 (§9.3): +1 bonus Heat on shooter.
+		if lscore == 21:
+			result.per_player[shooter_pid]["heat_delta"] = int(result.per_player[shooter_pid].get("heat_delta", 0)) + 1
+		# Fold attack into shooter's chip_delta (positive).
+		result.per_player[shooter_pid]["chip_delta"] = int(result.per_player[shooter_pid].get("chip_delta", 0)) + atk
+		# Fold attack into target's chip_delta (negative). Ensure the
+		# target has a per_player entry — busted targets are populated
+		# in the main loop already, but defensive init keeps this safe.
+		if not result.per_player.has(target_pid):
+			result.per_player[target_pid] = {
+				"chip_delta": 0, "crown_delta": 0, "heat_delta": 0,
+				"bust": false, "cash_out_at": 0.0,
+			}
+		result.per_player[target_pid]["chip_delta"] = int(result.per_player[target_pid].get("chip_delta", 0)) - atk
+		result.per_player[target_pid]["incoming_attack"] = int(result.per_player[target_pid].get("incoming_attack", 0)) + atk
+		# Reveal fields on the shooter.
+		result.per_player[shooter_pid]["target_peer_id"] = target_pid
+		result.per_player[shooter_pid]["attack_delta"] = atk
+	# Patch the scores_summary rows so the reveal sees the post-attack
+	# chip_delta + the new combat fields (target_peer_id, attack_delta).
+	for row in summary:
+		var pid = int(row.get("peer_id", 0))
+		var entry = result.per_player.get(pid, {})
+		row["chip_delta"] = int(entry.get("chip_delta", row.get("chip_delta", 0)))
+		row["target_peer_id"] = int(entry.get("target_peer_id", 0))
+		row["attack_delta"] = int(entry.get("attack_delta", 0))
 	result.painful_reveal = {
 		"winner_peer_id": winner_peer_id,
 		"winner_score": winner_score,

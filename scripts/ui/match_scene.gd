@@ -337,6 +337,10 @@ func _on_settings_button_pressed() -> void:
 
 func _on_local_spectator_mode_entered(_reason: String) -> void:
 	# Plan C Task 10: hide play widgets, show SpectatorOverlay.
+	# Alpha feel remediation Phase A Change 1: this handler is now only
+	# reached via disconnect / hard-elimination paths
+	# (notify_local_spectator_if_dropped). Event busts no longer call
+	# notify_local_spectator_if_busted, so they never reach this handler.
 	# Reversal is NOT supported in MVP — once a peer goes spectator
 	# they stay for the rest of the match.
 	var widgets = {

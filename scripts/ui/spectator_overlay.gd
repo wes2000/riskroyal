@@ -1,5 +1,6 @@
-# SpectatorOverlay: shown when the local player is in spectator mode
-# (busted mid-match or dropped). Full-screen Control anchored to the
+# SpectatorOverlay: shown when the local player is in match-long spectator
+# mode (dropped / hard eliminated — NOT event busts, which are event-local).
+# Full-screen Control anchored to the
 # right 40% of the viewport. Displays a sorted leaderboard, a per-event
 # status panel (Task 12), and a match-progress label.
 # Plan C Phase 3 Task 8: scene + script + leaderboard formatter.

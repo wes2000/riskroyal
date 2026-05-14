@@ -12,7 +12,7 @@ const CARD_META: Dictionary = {
 	"timing": "bet_loadout",
 	"target_required": true,
 	"cost_chips": 150,
-	"description": "Place a 150-chip bounty on target. Anyone who busts them claims it.",
+	"description": "Place a 150-chip personal bounty on target. If they bust and you survive, you claim it.",
 }
 
 static func apply(context, target_peer_id: int, params = null) -> Dictionary:
@@ -29,6 +29,11 @@ static func apply(context, target_peer_id: int, params = null) -> Dictionary:
 			if p.peer_id == target_peer_id:
 				target_heat = p.heat
 				break
+	# Phase C Change 4 (§8.6 MVP): player-paid bounties are personal —
+	# claim_mode=placer routes the full reward to the caller (not split
+	# across all survivors), and the bounty is unclaimed if the placer
+	# busts. This closes the design pillar "bounties create permission
+	# to attack friends."
 	return {
 		"type": "place_bounty",
 		"applied": true,
@@ -37,4 +42,5 @@ static func apply(context, target_peer_id: int, params = null) -> Dictionary:
 		"placed_at_target_heat": target_heat,
 		"placed_at_event": event_index,
 		"reward_chips": MatchConfig.BOUNTY_BASE_REWARD,
+		"claim_mode": "placer",
 	}

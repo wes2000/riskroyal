@@ -40,6 +40,13 @@ static func auto_place(state) -> Array:
 # {claimant_peer_id, bounty_dict, reward_chips}. Each unclaimed bounty
 # returned with claimant_peer_id = 0 (caller broadcasts _rpc_bounty_unclaimed).
 # Mutates state.players[claimant].chips and clears state.bounties.
+#
+# Phase C Change 4 (§8.5): claim_mode dispatcher routes the reward:
+# - "survivors" (default, legacy): split across all satisfying survivors.
+# - "placer": full reward to placed_by if they survived and condition holds.
+# - "saboteur": full reward to result.per_player[target].failure_caused_by
+#   if that player survived.
+# Unknown claim_modes fall back to "survivors" behavior.
 static func resolve(state, result) -> Array:
 	var awards: Array = []
 	for bounty in state.bounties:
@@ -56,6 +63,34 @@ static func resolve(state, result) -> Array:
 		if state.house_twist.get("type", "") == "double_bounty":
 			var mult = float(state.house_twist.get("params", {}).get("reward_multiplier", 1.0))
 			reward = int(reward * mult)
+		# Phase C Change 4: claim_mode dispatch. "placer" / "saboteur" route
+		# the full reward to a single recipient; "survivors" (default) uses
+		# the existing split path.
+		var claim_mode = String(bounty.claim_mode) if "claim_mode" in bounty else "survivors"
+		if claim_mode == "placer":
+			var placer_id = int(bounty.placed_by)
+			if placer_id != 0 and placer_id in claimants:
+				var p = _find_player(state, placer_id)
+				if p != null:
+					p.chips += reward
+				awards.append({"claimant_peer_id": placer_id, "bounty_dict": bounty.to_dict(), "reward_chips": reward})
+			else:
+				# Placer didn't survive or condition didn't hold for them.
+				# Personal bounties don't fall through to public split.
+				awards.append({"claimant_peer_id": 0, "bounty_dict": bounty.to_dict(), "reward_chips": 0})
+			continue
+		if claim_mode == "saboteur":
+			var target_entry = result.per_player.get(bounty.target, {})
+			var caused_by = int(target_entry.get("failure_caused_by", 0))
+			if caused_by != 0 and caused_by in claimants:
+				var p = _find_player(state, caused_by)
+				if p != null:
+					p.chips += reward
+				awards.append({"claimant_peer_id": caused_by, "bounty_dict": bounty.to_dict(), "reward_chips": reward})
+			else:
+				awards.append({"claimant_peer_id": 0, "bounty_dict": bounty.to_dict(), "reward_chips": 0})
+			continue
+		# Default "survivors" path: legacy public-split.
 		if claimants.size() == 1:
 			var claimant = _find_player(state, claimants[0])
 			if claimant != null:

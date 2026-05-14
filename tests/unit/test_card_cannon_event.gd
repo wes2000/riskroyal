@@ -129,27 +129,40 @@ func _make_context_cc(player_count: int, wagers: Dictionary, modifiers: Dictiona
 	return ctx
 
 func test_compute_event_result_score_band_payouts():
-	# Five band assertions in one test.
+	# Five band assertions in one test. Alpha remediation Phase D D.2:
+	# chip_delta now folds in Card Cannon attack transfers. With all
+	# players tied on crowns/heat, auto-target resolves to the lowest
+	# seat_index opponent. P1 (seat 0) is everyone's auto-target except
+	# P1 itself (whose lock = 10 = no attack), so P1 absorbs every hit.
+	#
+	# Base payouts: P1=50, P2=100, P3=150, P4=200, P5=300.
+	# Attack table per §9.3: 13→25, 17→50, 19→75, 21→100.
+	# All attacks aimed at P1:
+	#   P1 chip_delta = 50 (no attack out) − (25+50+75+100) = −200
+	#   P2..P5 = base + own attack
 	var ctx = _make_context_cc(5, {1: 100, 2: 100, 3: 100, 4: 100, 5: 100}, {})
 	var hands = {1: [10], 2: [10, 3], 3: [10, 7], 4: [10, 9], 5: [10, 11]}
 	var locked = {1: 10, 2: 13, 3: 17, 4: 19, 5: 21}
 	var busted = {}
 	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
-	assert_eq(result.per_player[1].chip_delta, 50, "band low: 100 * 0.5")
-	assert_eq(result.per_player[2].chip_delta, 100, "band medium: 100 * 1.0")
-	assert_eq(result.per_player[3].chip_delta, 150, "band strong: 100 * 1.5")
-	assert_eq(result.per_player[4].chip_delta, 200, "band heavy: 100 * 2.0")
-	assert_eq(result.per_player[5].chip_delta, 300, "band perfect: 100 * 3.0")
+	assert_eq(result.per_player[1].chip_delta, -200, "P1: 50 base − 250 incoming attack")
+	assert_eq(result.per_player[2].chip_delta, 125, "band medium: 100 + 25 attack")
+	assert_eq(result.per_player[3].chip_delta, 200, "band strong: 150 + 50 attack")
+	assert_eq(result.per_player[4].chip_delta, 275, "band heavy: 200 + 75 attack")
+	assert_eq(result.per_player[5].chip_delta, 400, "band perfect: 300 + 100 attack")
 
 func test_compute_event_result_busted_player_loses_wager():
+	# Alpha remediation Phase D D.2: P2 (lock 15) auto-targets P1
+	# (lowest seat) and lands a 25-chip attack even though P1 is
+	# busted — busted targets still take incoming hits.
 	var ctx = _make_context_cc(2, {1: 100, 2: 100}, {})
 	var hands = {1: [10, 10, 5], 2: [10, 5]}
 	var locked = {2: 15}
 	var busted = {1: true}
 	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
-	assert_eq(result.per_player[1].chip_delta, -100)
+	assert_eq(result.per_player[1].chip_delta, -125, "−100 bust + −25 incoming attack")
 	assert_true(result.per_player[1].bust)
-	assert_eq(result.per_player[2].chip_delta, 100, "band medium")
+	assert_eq(result.per_player[2].chip_delta, 125, "band medium + 25 attack")
 
 func test_compute_event_result_crown_to_highest_locked_score():
 	var ctx = _make_context_cc(3, {1: 100, 2: 100, 3: 100}, {})
@@ -181,12 +194,16 @@ func test_compute_event_result_insurance_halves_bust_penalty():
 	assert_eq(result.per_player[2].chip_delta, -200, "P2 no Insurance")
 
 func test_compute_event_result_underdog_odds_boosts_survivor():
+	# Alpha remediation Phase D D.2: each survivor with lock >= 11
+	# now also fires. P1's lock 19 deals 75; P2's lock 18 deals 50.
+	# With tied stats, both auto-target the lowest-seat opponent that
+	# isn't self — P1 fires at P2 and P2 fires at P1.
 	var ctx = _make_context_cc(2, {1: 100, 2: 100}, {1: {"underdog_multiplier": 1.5}})
 	var hands = {1: [10, 9], 2: [10, 8]}
 	var locked = {1: 19, 2: 18}
 	var busted = {}
 	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
-	# P1: 100 * 2.0 (heavy band) * 1.5 = 300
-	assert_eq(result.per_player[1].chip_delta, 300)
-	# P2: 100 * 1.5 (strong band) = 150
-	assert_eq(result.per_player[2].chip_delta, 150)
+	# P1: 100 * 2.0 (heavy band) * 1.5 = 300 base, +75 own attack, −50 incoming = 325
+	assert_eq(result.per_player[1].chip_delta, 325)
+	# P2: 100 * 1.5 (strong band) = 150 base, +50 own attack, −75 incoming = 125
+	assert_eq(result.per_player[2].chip_delta, 125)

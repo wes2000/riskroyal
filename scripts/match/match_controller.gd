@@ -364,11 +364,36 @@ func _process_ante_phase() -> void:
 	var ante = MatchConfig.ANTE_BY_EVENT_INDEX[state.event_index]
 	var deltas: Array = []
 	for p in state.players:
+		# Alpha feel remediation Phase A Change 1 (§5.4): clear the
+		# event-local bust flag so the player re-enters the new event
+		# without the BUSTED paint marker.
+		p.busted_this_event = false
 		if p.chips >= ante:
 			p.chips -= ante
 			p.is_active_this_event = true
 			player_resources_changed.emit(p.peer_id)
-			deltas.append({"peer_id": p.peer_id, "chip_delta": -ante, "crown_delta": 0, "heat_delta": 0})
+			deltas.append({"peer_id": p.peer_id, "chip_delta": -ante, "crown_delta": 0, "heat_delta": 0, "debt_delta": 0})
+		elif p.chips + MatchConfig.HOUSE_LOAN_AMOUNT >= ante \
+				and p.debt + MatchConfig.HOUSE_LOAN_AMOUNT <= MatchConfig.MAX_DEBT:
+			# Alpha feel remediation Phase E §10.3 (Debt-Lite Comeback):
+			# auto-accept a House Loan so the player stays in the event
+			# instead of being silently skipped. Adds loan to chips and
+			# debt, pays ante from the topped-up chip stack, and applies
+			# a +1 Heat stigma (clamped at HEAT_MAX).
+			p.debt += MatchConfig.HOUSE_LOAN_AMOUNT
+			p.chips += MatchConfig.HOUSE_LOAN_AMOUNT - ante
+			var prev_heat = p.heat
+			p.heat = clamp(p.heat + 1, 0, MatchConfig.HEAT_MAX)
+			var heat_d = p.heat - prev_heat
+			p.is_active_this_event = true
+			player_resources_changed.emit(p.peer_id)
+			deltas.append({
+				"peer_id": p.peer_id,
+				"chip_delta": MatchConfig.HOUSE_LOAN_AMOUNT - ante,
+				"crown_delta": 0,
+				"heat_delta": heat_d,
+				"debt_delta": MatchConfig.HOUSE_LOAN_AMOUNT,
+			})
 		else:
 			p.is_active_this_event = false
 	if deltas.size() > 0 and is_host:
@@ -671,7 +696,14 @@ func _process_main_event() -> void:
 		state.current_result = empty_result
 		_advance_phase()
 		return
-	_current_event_node.event_complete.connect(_on_event_complete)
+	# Alpha feel remediation Phase A §13.3: guard against double-connection.
+	# Re-entering MAIN_EVENT via test phase drivers or scene reload without
+	# proper cleanup would otherwise emit "Signal 'event_complete' is already
+	# connected to given callable." The defensive node-replacement above
+	# (queue_free + null) should prevent this in normal flow, but the guard
+	# is cheap insurance.
+	if not _current_event_node.event_complete.is_connected(_on_event_complete):
+		_current_event_node.event_complete.connect(_on_event_complete)
 	event_starting.emit(_current_event_node.get_event_id(), state.event_index)
 	_start_event_timeout_watchdog()
 	var context = _build_event_context()
@@ -690,9 +722,11 @@ func _inject_pending_event_effects() -> void:
 	var kept: Array = []
 	for effect in state.pending_card_effects:
 		if effect.get("type", "") == "cash_out_delay":
+			# Phase C Change 4 (§8.4): forward source for attribution.
 			_current_event_node.set_cash_out_delay(
 				int(effect.get("target", 0)),
 				int(effect.get("delay_ms", 750)),
+				int(effect.get("source", 0)),
 			)
 		else:
 			kept.append(effect)
@@ -856,6 +890,29 @@ func _apply_card_effects_to_result(result) -> void:
 				result.per_player[hd_target]["heat_delta"] = existing + hd_delta
 	state.pending_card_effects = []
 
+# Alpha feel remediation Phase E §10.3 (Debt-Lite Comeback): garnish 25%
+# of each debt-holding player's positive chip_delta. Mutates the result in
+# place: reduces chip_delta by the garnish and stamps a debt_delta entry
+# (-garnish) for the chip_changes broadcast carrier. Capped at the
+# player's remaining debt so debt never overshoots zero.
+func _apply_debt_garnish_to_result(result) -> void:
+	if result == null:
+		return
+	for pid in result.per_player.keys():
+		var p = state.find_player(pid)
+		if p == null or p.debt <= 0:
+			continue
+		var chip_d = int(result.per_player[pid].get("chip_delta", 0))
+		if chip_d <= 0:
+			continue
+		var garnish = int(floor(chip_d * MatchConfig.DEBT_GARNISH_RATE))
+		if garnish > p.debt:
+			garnish = p.debt
+		if garnish <= 0:
+			continue
+		result.per_player[pid]["chip_delta"] = chip_d - garnish
+		result.per_player[pid]["debt_delta"] = -garnish
+
 func _process_resolution_phase() -> void:
 	var result = state.current_result
 	if result == null:
@@ -868,8 +925,25 @@ func _process_resolution_phase() -> void:
 	# NEW: apply pending card effects (Wager Tax, Heat Spike) before chip_changes
 	# so the broadcast carries the modified deltas.
 	_apply_card_effects_to_result(result)
+	# Alpha feel remediation Phase E §10.3 (Debt-Lite Comeback): garnish
+	# 25% of positive resolution winnings for players with outstanding
+	# House Loan debt. Must run AFTER card effects (so Wager Tax / Heat
+	# Spike land first) and BEFORE chip_changes broadcast (so the deltas
+	# carried over RPC reflect the garnish). Bounty payouts in
+	# _process_bounty_heat_update happen later and are intentionally
+	# exempt — bounties go directly to the killer's pocket.
+	_apply_debt_garnish_to_result(result)
 	_apply_and_emit("chip_changes", result, "chip_delta")
 	await _await_resolution_step_delay()
+	# Alpha remediation Phase G S2 (Pillar #7: Comebacks require risk, not
+	# charity). Surface the House cut on the resolution overlay so the
+	# painful-reveal explains why chip_delta was smaller than the player's
+	# wager would suggest. Suppressed when no one was garnished this event
+	# (the no-debt common case) to keep the pipeline quiet.
+	var garnish_payload = _build_debt_garnish_payload(result)
+	if not garnish_payload.get("garnishes", []).is_empty():
+		_emit_resolution_step("debt_garnish", garnish_payload)
+		await _await_resolution_step_delay()
 	_apply_and_emit("crown_awards", result, "crown_delta")
 	await _await_resolution_step_delay()
 	_emit_resolution_step("painful_reveal", result.painful_reveal)
@@ -889,9 +963,16 @@ func _build_busts_payload(result) -> Dictionary:
 			# (positive magnitude) for Announcer + PainfulReveal subscribers.
 			var loss = abs(int(result.per_player[pid].get("chip_delta", 0)))
 			player_busted.emit(pid, loss)
-			# Plan C Task 9: each peer evaluates if its OWN local player
-			# just busted. Only the affected peer's controller emits.
-			notify_local_spectator_if_busted(pid)
+			# Alpha feel remediation Phase A Change 1 (§5.4): mark the
+			# MatchPlayer record so status chips / overlays can show BUSTED
+			# for the remainder of this event. Reset in _process_ante_phase
+			# at the start of the next event.
+			# NOTE: notify_local_spectator_if_busted is intentionally NOT
+			# called here — event busts are event-local and must not trigger
+			# match-long spectator mode.
+			var p = state.find_player(pid)
+			if p != null:
+				p.busted_this_event = true
 	return {"bust_peer_ids": bust_ids}
 
 func _build_cash_outs_payload(result) -> Dictionary:
@@ -901,12 +982,38 @@ func _build_cash_outs_payload(result) -> Dictionary:
 		co[pid] = entry.get("cash_out_at", 0.0)
 	return {"cash_outs": co}
 
+# Alpha remediation Phase G S2 (§10.4): build a payload listing every
+# player whose chip_delta was garnished this event. debt_delta is stamped
+# negative by _apply_debt_garnish_to_result; this helper flips it back to
+# a positive magnitude so the overlay renders "House garnished N from
+# <Name>'s winnings." Players without an active garnish are skipped, so
+# downstream consumers can no-op on empty payloads.
+func _build_debt_garnish_payload(result) -> Dictionary:
+	var entries: Array = []
+	if result == null:
+		return {"garnishes": entries}
+	for pid in result.per_player.keys():
+		var entry = result.per_player[pid]
+		var debt_d = int(entry.get("debt_delta", 0))
+		if debt_d >= 0:
+			continue  # only positive garnishes; debt_delta is negative when garnished
+		entries.append({"peer_id": pid, "garnish": -debt_d})
+	return {"garnishes": entries}
+
 func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
 	var deltas: Array = []
 	var broadcast_deltas: Array = []
+	# Phase E §10.3: on the chip_changes step, also handle any debt_delta
+	# the garnish helper stamped on the result. The chip-changes broadcast
+	# is the natural carrier (debt mutation pairs with chip-delta movement).
+	# A pid with chip_delta=0 but debt_delta != 0 is unreachable today but
+	# we still emit it if it ever shows up.
 	for pid in result.per_player.keys():
 		var d = int(result.per_player[pid].get(delta_key, 0))
-		if d == 0:
+		var debt_d = 0
+		if delta_key == "chip_delta":
+			debt_d = int(result.per_player[pid].get("debt_delta", 0))
+		if d == 0 and debt_d == 0:
 			continue
 		var p = state.find_player(pid)
 		if p == null:
@@ -914,15 +1021,18 @@ func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
 		match delta_key:
 			"chip_delta":
 				p.chips += d
-				broadcast_deltas.append({"peer_id": pid, "chip_delta": d, "crown_delta": 0, "heat_delta": 0})
+				if debt_d != 0:
+					p.debt = max(0, p.debt + debt_d)
+				broadcast_deltas.append({"peer_id": pid, "chip_delta": d, "crown_delta": 0, "heat_delta": 0, "debt_delta": debt_d})
 			"crown_delta":
 				p.crowns += d
-				broadcast_deltas.append({"peer_id": pid, "chip_delta": 0, "crown_delta": d, "heat_delta": 0})
+				broadcast_deltas.append({"peer_id": pid, "chip_delta": 0, "crown_delta": d, "heat_delta": 0, "debt_delta": 0})
 				# Sub-project #7 Plan B Task 7: visual trigger for Announcer
 				# + PainfulReveal. d is the crown_delta for this resolution
 				# step (1 for plain Crown, 2 for Sudden Death stack).
 				crown_awarded.emit(pid, d)
-		deltas.append({"peer_id": pid, "delta": d})
+		if d != 0:
+			deltas.append({"peer_id": pid, "delta": d})
 		player_resources_changed.emit(pid)
 	_emit_resolution_step(step_name, {"deltas": deltas})
 	if broadcast_deltas.size() > 0 and is_host:
@@ -984,13 +1094,19 @@ func _deal_starter_pack() -> void:
 	# Sub-project #7 Plan A Task 11: narrow from one broadcast-with-all-hands
 	# to one rpc_id per peer with just that peer's hand. Apply hand
 	# locally on host first, then send each peer their own hand.
+	# Alpha feel remediation Phase A §13.4: skip rpc_id for the host's own
+	# peer_id. Calling rpc_id(host_peer_id, ...) to yourself is an error
+	# ("RPC on yourself is not allowed by selected mode"). The host already
+	# has the hand set via p.hand = hand above; the RPC is only needed for
+	# remote peers.
 	for p in state.players:
 		var hand: Array = []
 		for i in MatchConfig.STARTER_PACK_SIZE:
 			var idx = state.rng.randi() % pool.size()
 			hand.append(pool[idx])
 		p.hand = hand
-		_send_rpc_to_peer(p.peer_id, "_rpc_starter_pack_dealt", [p.peer_id, hand.duplicate()])
+		if p.peer_id != _local_peer_id():
+			_send_rpc_to_peer(p.peer_id, "_rpc_starter_pack_dealt", [p.peer_id, hand.duplicate()])
 
 @rpc("authority", "call_remote", "reliable")
 func _rpc_starter_pack_dealt(peer_id: int, hand: Array) -> void:
@@ -1136,12 +1252,18 @@ func _rpc_apply_deltas(deltas: Array) -> void:
 		var chip_d = int(d.get("chip_delta", 0))
 		var crown_d = int(d.get("crown_delta", 0))
 		var heat_d = int(d.get("heat_delta", 0))
+		# Alpha feel remediation Phase E §10.3: mirror host-side debt
+		# mutation (House Loan accrual + garnish repayments). Clamp at 0
+		# so debt never goes negative.
+		var debt_d = int(d.get("debt_delta", 0))
 		if chip_d != 0:
 			p.chips += chip_d
 		if crown_d != 0:
 			p.crowns += crown_d
 		if heat_d != 0:
 			p.heat = clamp(p.heat + heat_d, 0, MatchConfig.HEAT_MAX)
+		if debt_d != 0:
+			p.debt = max(0, p.debt + debt_d)
 		player_resources_changed.emit(pid)
 
 @rpc("authority", "call_remote", "reliable")

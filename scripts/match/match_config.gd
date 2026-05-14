@@ -71,5 +71,14 @@ const CARD_CANNON_PAYOUT_BAND_STRONG: float = 1.5 # scores 16-18
 const CARD_CANNON_PAYOUT_BAND_HEAVY: float = 2.0  # scores 19-20
 const CARD_CANNON_PAYOUT_BAND_PERFECT: float = 3.0 # score 21
 
+# Alpha feel remediation Phase E §10.3 (Debt-Lite Comeback)
+# Players who cannot pay ante auto-accept a House Loan: +HOUSE_LOAN_AMOUNT
+# chips, +HOUSE_LOAN_AMOUNT debt (capped at MAX_DEBT), +1 Heat. On positive
+# resolution winnings, DEBT_GARNISH_RATE of chip_delta is diverted to repay
+# debt (floored to int, capped at remaining debt).
+const MAX_DEBT: int = 300
+const HOUSE_LOAN_AMOUNT: int = 150
+const DEBT_GARNISH_RATE: float = 0.25
+
 static func starting_chips_for_player_count(count: int) -> int:
 	return STARTING_CHIPS_BY_PLAYER_COUNT.get(count, 500)
