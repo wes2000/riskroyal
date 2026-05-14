@@ -86,6 +86,14 @@ func _run_crown_animation() -> void:
 	_active_tween.tween_property(self, "modulate:a", 0.0, float(t.fade_sec))
 	_active_tween.tween_callback(func(): visible = false)
 
+# Plan C Task 11: compact mode shrinks the reveal area to the left 60%
+# so the spectator leaderboard isn't covered by mid-screen reveals.
+func set_compact(compact: bool) -> void:
+	if compact:
+		anchor_right = 0.6
+	else:
+		anchor_right = 1.0
+
 # Static formatters (testable without scene)
 
 static func format_bust_reveal(peer_name: String, chip_loss: int) -> String:

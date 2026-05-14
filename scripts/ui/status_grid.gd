@@ -45,6 +45,17 @@ func _rebuild() -> void:
 		_row.add_child(lbl)
 		_chips[p.peer_id] = lbl
 
+# Plan C Task 11: compact mode shrinks the widget for spectator-side
+# rendering. The leaderboard takes the right 40% so the play widgets
+# move to a narrow column at the top-left.
+func set_compact(compact: bool) -> void:
+	if compact:
+		anchor_right = 0.6
+		size_flags_horizontal = SIZE_SHRINK_BEGIN
+	else:
+		anchor_right = 1.0
+		size_flags_horizontal = SIZE_EXPAND_FILL
+
 # Static formatter (testable without scene)
 
 static func format_status(event_id: String, peer_state: Dictionary) -> String:

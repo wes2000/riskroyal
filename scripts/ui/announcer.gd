@@ -78,6 +78,14 @@ func _enqueue(message: String) -> void:
 	if not _showing:
 		_show_next()
 
+# Plan C Task 11: compact mode shrinks the banner to the left 60%
+# so the spectator leaderboard on the right 40% isn't occluded.
+func set_compact(compact: bool) -> void:
+	if compact:
+		anchor_right = 0.6
+	else:
+		anchor_right = 1.0
+
 func _show_next() -> void:
 	if _queue.is_empty():
 		_showing = false
