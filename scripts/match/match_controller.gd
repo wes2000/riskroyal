@@ -254,6 +254,48 @@ func submit_event_pick(chosen_path: String) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if is_inside_tree() else 1
 	_send_rpc_to_host("_rpc_event_picker_choice", [my_peer_id, chosen_path])
 
+# Bot-friendly entry points: take an explicit peer_id instead of inferring
+# from multiplayer.get_unique_id(). Host-only — these route directly to
+# the corresponding _rpc_* receivers (which Godot allows local calls on)
+# so behavior is identical to a real RPC submission from `peer_id`.
+# Required for Practice mode bots that share the local peer.
+
+func host_submit_wager(peer_id: int, amount: int) -> void:
+	if not is_host:
+		push_warning("host_submit_wager called on non-host")
+		return
+	_rpc_set_wager(peer_id, amount)
+
+func host_submit_loadout(peer_id: int, loadout: Array) -> void:
+	if not is_host:
+		push_warning("host_submit_loadout called on non-host")
+		return
+	_rpc_loadout_set(peer_id, loadout)
+
+func host_submit_card_play(peer_id: int, card_id: String, target_peer_id: int = 0, params = null) -> void:
+	if not is_host:
+		push_warning("host_submit_card_play called on non-host")
+		return
+	_rpc_card_play_requested(peer_id, card_id, target_peer_id, params)
+
+func host_submit_event_pick(peer_id: int, chosen_path: String) -> void:
+	if not is_host:
+		push_warning("host_submit_event_pick called on non-host")
+		return
+	_rpc_event_picker_choice(peer_id, chosen_path)
+
+func host_submit_shop_buy(peer_id: int, card_id: String) -> void:
+	if not is_host:
+		push_warning("host_submit_shop_buy called on non-host")
+		return
+	_rpc_shop_buy_requested(peer_id, card_id)
+
+func host_submit_shop_done(peer_id: int) -> void:
+	if not is_host:
+		push_warning("host_submit_shop_done called on non-host")
+		return
+	_rpc_shop_done(peer_id)
+
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_set_wager(peer_id: int, amount: int) -> void:
 	if not is_host:

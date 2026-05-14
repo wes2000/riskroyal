@@ -91,6 +91,22 @@ func _run(context) -> void:
 func _rpc_card_cannon_started() -> void:
 	pass  # clients render the scene; no time sync needed
 
+# Bot-friendly entry points: take an explicit peer_id instead of inferring
+# from multiplayer.get_unique_id(). Host-only; route through the same
+# receivers remote peers use. Required for Practice mode bots which share
+# the local peer.
+func host_submit_draw(peer_id: int) -> void:
+	if not _is_host:
+		push_warning("host_submit_draw called on non-host")
+		return
+	_rpc_draw_requested(peer_id)
+
+func host_submit_lock(peer_id: int) -> void:
+	if not _is_host:
+		push_warning("host_submit_lock called on non-host")
+		return
+	_rpc_lock_requested(peer_id)
+
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_draw_requested(peer_id: int) -> void:
 	if not _is_host:

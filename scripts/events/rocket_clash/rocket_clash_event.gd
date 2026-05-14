@@ -200,6 +200,15 @@ func set_cash_out_delay(peer_id: int, delay_ms: int, source_peer_id: int = 0) ->
 		"source": source_peer_id,
 	}
 
+# Bot-friendly entry: takes explicit peer_id + a pre-computed multiplier
+# snapshot. Host-only; routes through the same receiver remote peers use.
+# Required for Practice mode bots which share the local peer.
+func host_submit_cash_out(peer_id: int, mult_snapshot: float) -> void:
+	if not _is_host:
+		push_warning("host_submit_cash_out called on non-host")
+		return
+	_rpc_cash_out_requested(peer_id, mult_snapshot)
+
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_cash_out_requested(peer_id: int, snapshot_mult: float) -> void:
 	if not _is_host:

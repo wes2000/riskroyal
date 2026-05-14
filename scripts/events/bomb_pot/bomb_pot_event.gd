@@ -82,6 +82,16 @@ func _run(context) -> void:
 func _rpc_bomb_pot_started(start_time_ms: int) -> void:
 	_start_time_ms = start_time_ms
 
+# Bot-friendly entry: takes explicit peer_id instead of inferring from
+# multiplayer.get_unique_id(). Host-only; routes through the same receiver
+# remote peers use. Required for Practice mode bots which share the local
+# peer.
+func host_submit_pull_out(peer_id: int) -> void:
+	if not _is_host:
+		push_warning("host_submit_pull_out called on non-host")
+		return
+	_rpc_pull_out_requested(peer_id)
+
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_pull_out_requested(peer_id: int) -> void:
 	if not _is_host:
