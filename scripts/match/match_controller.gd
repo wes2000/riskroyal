@@ -675,7 +675,14 @@ func _process_main_event() -> void:
 		state.current_result = empty_result
 		_advance_phase()
 		return
-	_current_event_node.event_complete.connect(_on_event_complete)
+	# Alpha feel remediation Phase A §13.3: guard against double-connection.
+	# Re-entering MAIN_EVENT via test phase drivers or scene reload without
+	# proper cleanup would otherwise emit "Signal 'event_complete' is already
+	# connected to given callable." The defensive node-replacement above
+	# (queue_free + null) should prevent this in normal flow, but the guard
+	# is cheap insurance.
+	if not _current_event_node.event_complete.is_connected(_on_event_complete):
+		_current_event_node.event_complete.connect(_on_event_complete)
 	event_starting.emit(_current_event_node.get_event_id(), state.event_index)
 	_start_event_timeout_watchdog()
 	var context = _build_event_context()
