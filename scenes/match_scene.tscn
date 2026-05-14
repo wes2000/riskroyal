@@ -47,6 +47,18 @@ custom_minimum_size = Vector2(0, 200)
 
 [node name="MatchEndSlot" type="Container" parent="VBox"]
 
+[node name="SettingsButton" type="Button" parent="."]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -80.0
+offset_right = 0.0
+offset_bottom = 30.0
+text = "⚙"
+
+[node name="SettingsSlot" type="Container" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
 [node name="PauseOverlay" type="PanelContainer" parent="."]
 anchor_right = 1.0
 anchor_bottom = 1.0
