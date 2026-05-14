@@ -29,9 +29,28 @@ func send(method_name: String, args: Array = []) -> void:
 	callable.callv(combined)
 
 # Targeted send. Routes through _multiplayer_node.rpc_id with callv.
+# Alpha feel remediation Phase A §13.4: guard against sending to an unknown
+# peer. In unit tests with no real multiplayer session, calling rpc_id with
+# a peer_id that is not in the connected peer list emits "Attempt to call RPC
+# with unknown peer ID". Skip the call if the node's multiplayer API does not
+# know about that peer. The guard is a no-op when the multiplayer node is a
+# FakeMultiplayerNode (doesn't expose .multiplayer) or when the peer list
+# contains the target id (production runtime).
 func send_to_peer(peer_id: int, method_name: String, args: Array = []) -> void:
 	if _multiplayer_node == null:
 		return
+	# Peer-presence guard: if the multiplayer_node is a real Node (has a
+	# .multiplayer property) and that API has peers, only send if peer_id
+	# is in the connected peer list. If the API has NO peers at all (offline
+	# unit test), skip all targeted sends. FakeMultiplayerNode lacks the
+	# .multiplayer property and so skips this guard entirely (it records all
+	# calls unconditionally for test inspection).
+	if _multiplayer_node is Node:
+		var mp = _multiplayer_node.multiplayer
+		if mp != null:
+			var peers: Array = mp.get_peers()
+			if peer_id not in peers:
+				return
 	var callable = Callable(_multiplayer_node, "rpc_id")
 	var combined = [peer_id, method_name]
 	for a in args:

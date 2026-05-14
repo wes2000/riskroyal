@@ -1002,13 +1002,19 @@ func _deal_starter_pack() -> void:
 	# Sub-project #7 Plan A Task 11: narrow from one broadcast-with-all-hands
 	# to one rpc_id per peer with just that peer's hand. Apply hand
 	# locally on host first, then send each peer their own hand.
+	# Alpha feel remediation Phase A §13.4: skip rpc_id for the host's own
+	# peer_id. Calling rpc_id(host_peer_id, ...) to yourself is an error
+	# ("RPC on yourself is not allowed by selected mode"). The host already
+	# has the hand set via p.hand = hand above; the RPC is only needed for
+	# remote peers.
 	for p in state.players:
 		var hand: Array = []
 		for i in MatchConfig.STARTER_PACK_SIZE:
 			var idx = state.rng.randi() % pool.size()
 			hand.append(pool[idx])
 		p.hand = hand
-		_send_rpc_to_peer(p.peer_id, "_rpc_starter_pack_dealt", [p.peer_id, hand.duplicate()])
+		if p.peer_id != _local_peer_id():
+			_send_rpc_to_peer(p.peer_id, "_rpc_starter_pack_dealt", [p.peer_id, hand.duplicate()])
 
 @rpc("authority", "call_remote", "reliable")
 func _rpc_starter_pack_dealt(peer_id: int, hand: Array) -> void:
