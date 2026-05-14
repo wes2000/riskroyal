@@ -36,6 +36,8 @@ signal shop_closed
 signal shop_purchase_confirmed(peer_id: int, card_id: String, cost_chips: int)
 signal shop_purchase_rejected(peer_id: int, card_id: String, reason: String)
 signal house_twist_announced(twist_dict: Dictionary)
+signal player_busted(peer_id: int, chip_loss: int)
+signal crown_awarded(peer_id: int, count: int)
 signal event_picker_started(picker_peer_id: int, options: Array)
 signal event_picker_resolved(chosen_path: String, reason: String)
 signal status_changed(peer_id: int, status_string: String)
@@ -840,6 +842,10 @@ func _build_busts_payload(result) -> Dictionary:
 	for pid in result.per_player.keys():
 		if result.bust_for(pid):
 			bust_ids.append(pid)
+			# Sub-project #7 Plan B Task 7: emit player_busted with chip_loss
+			# (positive magnitude) for Announcer + PainfulReveal subscribers.
+			var loss = abs(int(result.per_player[pid].get("chip_delta", 0)))
+			player_busted.emit(pid, loss)
 	return {"bust_peer_ids": bust_ids}
 
 func _build_cash_outs_payload(result) -> Dictionary:
@@ -866,6 +872,10 @@ func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
 			"crown_delta":
 				p.crowns += d
 				broadcast_deltas.append({"peer_id": pid, "chip_delta": 0, "crown_delta": d, "heat_delta": 0})
+				# Sub-project #7 Plan B Task 7: visual trigger for Announcer
+				# + PainfulReveal. d is the crown_delta for this resolution
+				# step (1 for plain Crown, 2 for Sudden Death stack).
+				crown_awarded.emit(pid, d)
 		deltas.append({"peer_id": pid, "delta": d})
 		player_resources_changed.emit(pid)
 	_emit_resolution_step(step_name, {"deltas": deltas})
