@@ -195,7 +195,7 @@ static func compute_event_result(context, hands: Dictionary, locked_scores: Dict
 	var winner_score = 0
 	var winner_seat = INF
 	var modifiers = {}
-	if context != null and "event_modifiers" in context:
+	if context != null:
 		modifiers = context.event_modifiers
 	for player in context.players:
 		var pid = player.peer_id

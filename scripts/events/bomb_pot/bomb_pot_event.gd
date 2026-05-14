@@ -173,7 +173,7 @@ static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dic
 	var winner_pull_out_ms = -1
 	var winner_seat = INF
 	var modifiers = {}
-	if context != null and "event_modifiers" in context:
+	if context != null:
 		modifiers = context.event_modifiers
 	for player in context.players:
 		var pid = player.peer_id

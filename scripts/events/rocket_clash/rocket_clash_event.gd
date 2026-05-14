@@ -238,7 +238,7 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 	var winner_name = ""
 	var winner_cash_out = -1.0
 	var modifiers = {}
-	if context != null and "event_modifiers" in context:
+	if context != null:
 		modifiers = context.event_modifiers
 	for player in context.players:
 		var pid = player.peer_id
