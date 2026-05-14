@@ -890,6 +890,29 @@ func _apply_card_effects_to_result(result) -> void:
 				result.per_player[hd_target]["heat_delta"] = existing + hd_delta
 	state.pending_card_effects = []
 
+# Alpha feel remediation Phase E §10.3 (Debt-Lite Comeback): garnish 25%
+# of each debt-holding player's positive chip_delta. Mutates the result in
+# place: reduces chip_delta by the garnish and stamps a debt_delta entry
+# (-garnish) for the chip_changes broadcast carrier. Capped at the
+# player's remaining debt so debt never overshoots zero.
+func _apply_debt_garnish_to_result(result) -> void:
+	if result == null:
+		return
+	for pid in result.per_player.keys():
+		var p = state.find_player(pid)
+		if p == null or p.debt <= 0:
+			continue
+		var chip_d = int(result.per_player[pid].get("chip_delta", 0))
+		if chip_d <= 0:
+			continue
+		var garnish = int(floor(chip_d * MatchConfig.DEBT_GARNISH_RATE))
+		if garnish > p.debt:
+			garnish = p.debt
+		if garnish <= 0:
+			continue
+		result.per_player[pid]["chip_delta"] = chip_d - garnish
+		result.per_player[pid]["debt_delta"] = -garnish
+
 func _process_resolution_phase() -> void:
 	var result = state.current_result
 	if result == null:
@@ -902,6 +925,14 @@ func _process_resolution_phase() -> void:
 	# NEW: apply pending card effects (Wager Tax, Heat Spike) before chip_changes
 	# so the broadcast carries the modified deltas.
 	_apply_card_effects_to_result(result)
+	# Alpha feel remediation Phase E §10.3 (Debt-Lite Comeback): garnish
+	# 25% of positive resolution winnings for players with outstanding
+	# House Loan debt. Must run AFTER card effects (so Wager Tax / Heat
+	# Spike land first) and BEFORE chip_changes broadcast (so the deltas
+	# carried over RPC reflect the garnish). Bounty payouts in
+	# _process_bounty_heat_update happen later and are intentionally
+	# exempt — bounties go directly to the killer's pocket.
+	_apply_debt_garnish_to_result(result)
 	_apply_and_emit("chip_changes", result, "chip_delta")
 	await _await_resolution_step_delay()
 	_apply_and_emit("crown_awards", result, "crown_delta")
@@ -945,9 +976,17 @@ func _build_cash_outs_payload(result) -> Dictionary:
 func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
 	var deltas: Array = []
 	var broadcast_deltas: Array = []
+	# Phase E §10.3: on the chip_changes step, also handle any debt_delta
+	# the garnish helper stamped on the result. The chip-changes broadcast
+	# is the natural carrier (debt mutation pairs with chip-delta movement).
+	# A pid with chip_delta=0 but debt_delta != 0 is unreachable today but
+	# we still emit it if it ever shows up.
 	for pid in result.per_player.keys():
 		var d = int(result.per_player[pid].get(delta_key, 0))
-		if d == 0:
+		var debt_d = 0
+		if delta_key == "chip_delta":
+			debt_d = int(result.per_player[pid].get("debt_delta", 0))
+		if d == 0 and debt_d == 0:
 			continue
 		var p = state.find_player(pid)
 		if p == null:
@@ -955,15 +994,18 @@ func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
 		match delta_key:
 			"chip_delta":
 				p.chips += d
-				broadcast_deltas.append({"peer_id": pid, "chip_delta": d, "crown_delta": 0, "heat_delta": 0})
+				if debt_d != 0:
+					p.debt = max(0, p.debt + debt_d)
+				broadcast_deltas.append({"peer_id": pid, "chip_delta": d, "crown_delta": 0, "heat_delta": 0, "debt_delta": debt_d})
 			"crown_delta":
 				p.crowns += d
-				broadcast_deltas.append({"peer_id": pid, "chip_delta": 0, "crown_delta": d, "heat_delta": 0})
+				broadcast_deltas.append({"peer_id": pid, "chip_delta": 0, "crown_delta": d, "heat_delta": 0, "debt_delta": 0})
 				# Sub-project #7 Plan B Task 7: visual trigger for Announcer
 				# + PainfulReveal. d is the crown_delta for this resolution
 				# step (1 for plain Crown, 2 for Sudden Death stack).
 				crown_awarded.emit(pid, d)
-		deltas.append({"peer_id": pid, "delta": d})
+		if d != 0:
+			deltas.append({"peer_id": pid, "delta": d})
 		player_resources_changed.emit(pid)
 	_emit_resolution_step(step_name, {"deltas": deltas})
 	if broadcast_deltas.size() > 0 and is_host:
