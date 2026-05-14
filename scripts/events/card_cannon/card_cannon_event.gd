@@ -9,6 +9,7 @@ extends "res://scripts/events/event_node.gd"
 const MatchConfig = preload("res://scripts/match/match_config.gd")
 const EventResult = preload("res://scripts/events/event_result.gd")
 const EventHelpers = preload("res://scripts/match/event_helpers.gd")
+const HeatRules = preload("res://scripts/match/heat_rules.gd")
 
 # Per-round state
 var _hands: Dictionary = {}             # peer_id -> Array[int] ranks drawn
@@ -244,14 +245,19 @@ static func compute_event_result(context, hands: Dictionary, locked_scores: Dict
 				winner_score = locked
 				winner_peer_id = pid
 				winner_seat = player.seat_index
-	# Crown + heat
+	# Crown to highest locked_score; per-survivor Heat scales via HeatRules
+	# (Alpha remediation Phase C Change 3 §7.4).
 	if winner_peer_id != 0 and winner_score > 0:
 		result.per_player[winner_peer_id]["crown_delta"] = 1
-		var winner_mods = modifiers.get(winner_peer_id, {})
-		var heat_delta = 1
-		if winner_mods.get("heat_shield", false):
-			heat_delta = int(heat_delta / 2)
-		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
+	for player in context.players:
+		var pid = player.peer_id
+		if busted.get(pid, false):
+			continue  # busted players keep heat_delta = 0
+		var locked = int(locked_scores.get(pid, 0))
+		var won_crown = (pid == winner_peer_id) and (winner_score > 0)
+		var base_heat = HeatRules.card_cannon_heat(locked, won_crown)
+		var p_mods_heat = modifiers.get(pid, {})
+		result.per_player[pid]["heat_delta"] = HeatRules.apply_heat_shield(base_heat, p_mods_heat)
 	# Sub-project #7 Plan A Task 4: Sudden Death Jackpot via EventHelpers
 	for player in context.players:
 		var pid = player.peer_id

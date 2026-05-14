@@ -10,6 +10,7 @@ extends "res://scripts/events/event_node.gd"
 const MatchConfig = preload("res://scripts/match/match_config.gd")
 const EventResult = preload("res://scripts/events/event_result.gd")
 const EventHelpers = preload("res://scripts/match/event_helpers.gd")
+const HeatRules = preload("res://scripts/match/heat_rules.gd")
 
 # Per-round state (host populates; clients mirror per-RPC).
 var _bomb_at_sec: float = 0.0             # hidden; set in _run via compute_bomb_at
@@ -236,14 +237,20 @@ static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dic
 				"locked_share": 0, "pull_out_ms": 0,
 				"chip_delta": -bust_loss, "busted": true, "wager": wager,
 			})
-	# Crown + heat to last puller
+	# Crown to last puller; per-survivor Heat scales with pull-out ratio
+	# via HeatRules (Alpha remediation Phase C Change 3 §7.4).
 	if winner_peer_id != 0:
 		result.per_player[winner_peer_id]["crown_delta"] = 1
-		var winner_mods = modifiers.get(winner_peer_id, {})
-		var heat_delta = 1
-		if winner_mods.get("heat_shield", false):
-			heat_delta = int(heat_delta / 2)
-		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
+	for player in context.players:
+		var pid = player.peer_id
+		if not (pid in pulled_out_peers):
+			continue  # busted players keep heat_delta = 0
+		var pull_out_ms = int(pull_out_timestamps.get(pid, 0))
+		var locked_share = int(locked_shares.get(pid, 0))
+		var won_crown = (pid == winner_peer_id)
+		var base_heat = HeatRules.bomb_pot_heat(pull_out_ms, bomb_at_sec, won_crown, locked_share)
+		var p_mods_heat = modifiers.get(pid, {})
+		result.per_player[pid]["heat_delta"] = HeatRules.apply_heat_shield(base_heat, p_mods_heat)
 	# Sub-project #7 Plan A Task 3: Sudden Death Jackpot via EventHelpers
 	var threshold_ms = bomb_at_sec * 1000.0 * 0.80
 	for player in context.players:
