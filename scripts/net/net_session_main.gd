@@ -13,6 +13,10 @@ var _signaling  # _SignalingClient
 var _transport  # _WebRTCTransport
 var _timer: Timer
 var _last_match_start = null
+# Practice mode flag: when true, MatchScene treats the local peer as host
+# regardless of session state and spawns BotControllers for non-host seats.
+# Set by PracticeSession.start() before transitioning to the match scene.
+var practice_mode: bool = false
 
 func _ready() -> void:
 	_signaling = _SignalingClient.new()
@@ -82,3 +86,6 @@ func _on_match_starting(match_start) -> void:
 
 func get_last_match_start():
 	return _last_match_start
+
+func set_last_match_start(ms) -> void:
+	_last_match_start = ms

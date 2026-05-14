@@ -1,0 +1,43 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/practice_setup_overlay.gd" id="1"]
+
+[node name="PracticeSetupOverlay" type="Window"]
+title = "Practice vs Bots"
+size = Vector2i(360, 220)
+script = ExtResource("1")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+
+[node name="Title" type="Label" parent="VBox"]
+text = "Practice Match Setup"
+
+[node name="BotCountLabel" type="Label" parent="VBox"]
+text = "Bots (1-7):"
+
+[node name="BotCountSpin" type="SpinBox" parent="VBox"]
+min_value = 1.0
+max_value = 7.0
+value = 3.0
+step = 1.0
+
+[node name="SeedLabel" type="Label" parent="VBox"]
+text = "Seed (optional):"
+
+[node name="SeedInput" type="LineEdit" parent="VBox"]
+placeholder_text = "leave blank for random"
+
+[node name="Buttons" type="HBoxContainer" parent="VBox"]
+alignment = 1
+
+[node name="CancelButton" type="Button" parent="VBox/Buttons"]
+text = "Cancel"
+
+[node name="StartButton" type="Button" parent="VBox/Buttons"]
+text = "Start Match"

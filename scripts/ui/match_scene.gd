@@ -26,6 +26,7 @@ const SpectatorOverlayScene = preload("res://scenes/ui/spectator_overlay.tscn")
 const SettingsOverlayScene = preload("res://scenes/ui/settings_overlay.tscn")
 const SettingsOverlay = preload("res://scripts/ui/settings_overlay.gd")
 const NetSessionState = preload("res://scripts/data/net_session_state.gd")
+const BotController = preload("res://scripts/match/bot_controller.gd")
 
 @onready var _player_panels: HBoxContainer = $VBox/PlayerPanels if has_node("VBox/PlayerPanels") else null
 @onready var _phase_indicator: Label = $VBox/PhaseIndicator if has_node("VBox/PhaseIndicator") else null
@@ -75,7 +76,15 @@ func _ready() -> void:
 	if match_start == null:
 		push_error("MatchScene: no MatchStart available; cannot run match")
 		return
-	controller = MatchController.new(session.is_host, null)
+	# Practice mode: the local peer always acts as host, regardless of
+	# session state (no real WebRTC peer is attached in practice runs).
+	var practice_mode: bool = false
+	if get_tree().root.has_node("NetSessionMain"):
+		var nsm = get_tree().root.get_node("NetSessionMain")
+		if "practice_mode" in nsm:
+			practice_mode = nsm.practice_mode
+	var is_host: bool = practice_mode or session.is_host
+	controller = MatchController.new(is_host, null)
 	add_child(controller)
 	controller.phase_changed.connect(_on_phase_changed)
 	controller.event_starting.connect(_on_event_starting)
@@ -111,8 +120,20 @@ func _ready() -> void:
 	# 4 audible-trigger signals. Idempotent — scene reload re-binds.
 	if get_tree().root.has_node("SoundManager"):
 		get_tree().root.get_node("SoundManager").bind_controller(controller)
-	if session.is_host:
+	if is_host:
 		controller.start_match(match_start)
+		# Practice mode: spawn one BotController per non-host seat so the
+		# bots self-drive through the match. Host seat (peer_id=1) is
+		# driven by the real player's UI.
+		if practice_mode:
+			for seat in match_start.seats:
+				if seat.is_host:
+					continue
+				var bc = BotController.new()
+				bc.controller = controller
+				bc.bot_peer_id = seat.peer_id
+				bc.match_seed = match_start.rng_seed
+				add_child(bc)
 
 func _read_match_start():
 	if not get_tree().root.has_node("NetSessionMain"):
