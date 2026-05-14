@@ -38,6 +38,7 @@ signal shop_purchase_rejected(peer_id: int, card_id: String, reason: String)
 signal house_twist_announced(twist_dict: Dictionary)
 signal event_picker_started(picker_peer_id: int, options: Array)
 signal event_picker_resolved(chosen_path: String, reason: String)
+signal status_changed(peer_id: int, status_string: String)
 
 var state: MatchState
 var is_host: bool = false
@@ -1103,3 +1104,11 @@ func _rpc_bounty_claimed(claimant_peer_id: int, bounty_dict: Dictionary, reward_
 @rpc("authority", "call_remote", "reliable")
 func _rpc_bounty_unclaimed(bounty_dict: Dictionary) -> void:
 	bounty_unclaimed.emit(bounty_dict)
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_status_changed(peer_id: int, status_string: String) -> void:
+	# Sub-project #7 Plan B Task 2: per-event status broadcast.
+	# call_local means the host's own call fires locally too, so widgets
+	# on the host update without a separate emit. Clients receive it via
+	# the network path. Re-emits the local signal so StatusGrid updates.
+	status_changed.emit(peer_id, status_string)

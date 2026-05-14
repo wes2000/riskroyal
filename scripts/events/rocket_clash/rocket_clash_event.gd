@@ -137,6 +137,8 @@ func _finish() -> void:
 	for pid in _active_peers:
 		if not _cash_outs.has(pid):
 			busted.append(pid)
+	for pid in busted:
+		_emit_status_changed(_stashed_context, pid, "BUSTED")
 	var result = compute_event_result(_stashed_context, _crash_at, _cash_outs, busted)
 	event_complete.emit(result)
 
@@ -210,6 +212,7 @@ func _rpc_cash_out_requested(peer_id: int, snapshot_mult: float) -> void:
 		_send_rpc_to_peer(peer_id, "_rpc_cash_out_rejected", [peer_id])
 		return
 	_cash_outs[peer_id] = host_mult
+	_emit_status_changed(_stashed_context, peer_id, "CASHED")
 	_send_rpc("_rpc_cash_out_confirmed", [peer_id, host_mult])
 
 @rpc("authority", "call_remote", "reliable")
