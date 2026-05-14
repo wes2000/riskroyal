@@ -10,7 +10,7 @@ func _ready() -> void:
 		var player := AudioStreamPlayer.new()
 		var stream := AudioStreamGenerator.new()
 		stream.mix_rate = SAMPLE_RATE
-		stream.buffer_length = 0.1
+		stream.buffer_length = 1.5
 		player.stream = stream
 		player.name = cue
 		add_child(player)
@@ -78,6 +78,11 @@ func _play(cue_name: String) -> void:
 	if not _players.has(cue_name):
 		return
 	var player: AudioStreamPlayer = _players[cue_name]
+	# If the stream is file-backed (Task 2 asset swap), just play it.
+	if not (player.stream is AudioStreamGenerator):
+		player.play()
+		return
+	# Procedural path: start playback then push synthesized samples.
 	player.play()
 	var pb = player.get_stream_playback()
 	if pb == null:
