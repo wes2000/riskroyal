@@ -935,6 +935,15 @@ func _process_resolution_phase() -> void:
 	_apply_debt_garnish_to_result(result)
 	_apply_and_emit("chip_changes", result, "chip_delta")
 	await _await_resolution_step_delay()
+	# Alpha remediation Phase G S2 (Pillar #7: Comebacks require risk, not
+	# charity). Surface the House cut on the resolution overlay so the
+	# painful-reveal explains why chip_delta was smaller than the player's
+	# wager would suggest. Suppressed when no one was garnished this event
+	# (the no-debt common case) to keep the pipeline quiet.
+	var garnish_payload = _build_debt_garnish_payload(result)
+	if not garnish_payload.get("garnishes", []).is_empty():
+		_emit_resolution_step("debt_garnish", garnish_payload)
+		await _await_resolution_step_delay()
 	_apply_and_emit("crown_awards", result, "crown_delta")
 	await _await_resolution_step_delay()
 	_emit_resolution_step("painful_reveal", result.painful_reveal)
@@ -972,6 +981,24 @@ func _build_cash_outs_payload(result) -> Dictionary:
 		var entry = result.per_player[pid]
 		co[pid] = entry.get("cash_out_at", 0.0)
 	return {"cash_outs": co}
+
+# Alpha remediation Phase G S2 (§10.4): build a payload listing every
+# player whose chip_delta was garnished this event. debt_delta is stamped
+# negative by _apply_debt_garnish_to_result; this helper flips it back to
+# a positive magnitude so the overlay renders "House garnished N from
+# <Name>'s winnings." Players without an active garnish are skipped, so
+# downstream consumers can no-op on empty payloads.
+func _build_debt_garnish_payload(result) -> Dictionary:
+	var entries: Array = []
+	if result == null:
+		return {"garnishes": entries}
+	for pid in result.per_player.keys():
+		var entry = result.per_player[pid]
+		var debt_d = int(entry.get("debt_delta", 0))
+		if debt_d >= 0:
+			continue  # only positive garnishes; debt_delta is negative when garnished
+		entries.append({"peer_id": pid, "garnish": -debt_d})
+	return {"garnishes": entries}
 
 func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
 	var deltas: Array = []
