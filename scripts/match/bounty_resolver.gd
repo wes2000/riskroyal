@@ -8,13 +8,10 @@ extends Object
 
 const Bounty = preload("res://scripts/match/bounty.gd")
 const MatchConfig = preload("res://scripts/match/match_config.gd")
+const PlayerSelectors = preload("res://scripts/match/player_selectors.gd")
 
 static func find_chip_leader_peer_id(state) -> int:
-	var leader = state.players[0] if state.players.size() > 0 else null
-	for p in state.players:
-		if p.chips > leader.chips:
-			leader = p
-	return leader.peer_id if leader != null else 0
+	return PlayerSelectors.find_chips_extremum(state, "max", false)
 
 static func find_heat_leader_peer_id(state) -> int:
 	var leader = state.players[0] if state.players.size() > 0 else null

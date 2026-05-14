@@ -9,6 +9,7 @@ extends Object
 
 const CardRegistry = preload("res://scripts/cards/card_registry.gd")
 const MatchConfig = preload("res://scripts/match/match_config.gd")
+const PlayerSelectors = preload("res://scripts/match/player_selectors.gd")
 
 # Full 6-twist pool. Plan A implements 4 (double_bounty, no_insurance,
 # leader_cursed, power_surge); Plan B adds lowest_chips_picks + sudden_death_jackpot.
@@ -134,36 +135,20 @@ static func _all_chips_equal(state) -> bool:
 	return true
 
 # Computes the chip leader peer_id with deterministic tie-break by
-# lower seat_index. Diverges from BountyResolver.find_chip_leader_peer_id
-# (which uses first-encountered traversal order in ties); the two are
-# not currently consolidated because BountyResolver's tie behavior is
-# tolerated for bounty placement, while leader_cursed needs determinism
-# for replayability.
+# lower seat_index. Intentionally diverges from BountyResolver.
+# find_chip_leader_peer_id (which uses tie_break=false, i.e. first-
+# encountered traversal order) via the explicit tie_break flag on
+# PlayerSelectors.find_chips_extremum. leader_cursed needs determinism
+# for replayability; bounty placement tolerates non-deterministic ties.
 static func _find_chip_leader_peer_id(state) -> int:
-	if state.players.is_empty():
-		return 0
-	var leader = state.players[0]
-	for p in state.players:
-		if p.chips > leader.chips:
-			leader = p
-		elif p.chips == leader.chips and p.seat_index < leader.seat_index:
-			leader = p  # seat_index tie-break
-	return leader.peer_id
+	return PlayerSelectors.find_chips_extremum(state, "max", true)
 
 # Lowest-chips player with deterministic tie-break by lower seat_index.
-# Mirror-shape with _find_chip_leader_peer_id but minimizing instead of
-# maximizing. Sub-project #7 may consolidate the two into a single helper
-# with a tie-break/direction flag.
+# Delegates to PlayerSelectors.find_chips_extremum (direction="min",
+# tie_break=true) — consolidated from the prior mirror-shape
+# implementation as part of sub-project #7 Task 5.
 static func _find_lowest_chips_peer_id(state) -> int:
-	if state.players.is_empty():
-		return 0
-	var lowest = state.players[0]
-	for p in state.players:
-		if p.chips < lowest.chips:
-			lowest = p
-		elif p.chips == lowest.chips and p.seat_index < lowest.seat_index:
-			lowest = p  # seat_index tie-break
-	return lowest.peer_id
+	return PlayerSelectors.find_chips_extremum(state, "min", true)
 
 # Fisher-Yates shuffle of MatchConfig.EVENT_POOL using state.rng for
 # determinism. Returns a new Array — does not mutate the const.
