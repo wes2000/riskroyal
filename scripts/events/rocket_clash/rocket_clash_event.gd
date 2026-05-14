@@ -228,6 +228,7 @@ func _rpc_cash_out_rejected(_peer_id: int) -> void:
 
 const EventResult = preload("res://scripts/events/event_result.gd")
 const EventHelpers = preload("res://scripts/match/event_helpers.gd")
+const HeatRules = preload("res://scripts/match/heat_rules.gd")
 
 # Builds the EventResult per spec section 6.1. Survivors:
 # chip_delta = wager × cash_out_at; bust: false; cash_out_at recorded.
@@ -303,14 +304,19 @@ static func compute_event_result(context, crash_at: float, cash_outs: Dictionary
 				winner_cash_out = cash_out_at
 				winner_peer_id = pid
 				winner_name = player.name
-	# Award the Crown + heat_delta to the highest-cash-out survivor
+	# Crown to the highest-cash-out survivor; per-survivor Heat scales
+	# with cash_out_at via HeatRules (Alpha remediation Phase C Change 3).
 	if winner_peer_id != 0:
 		result.per_player[winner_peer_id]["crown_delta"] = 1
-		var winner_mods = modifiers.get(winner_peer_id, {})
-		var heat_delta = 1
-		if winner_mods.get("heat_shield", false):
-			heat_delta = int(heat_delta / 2)  # Heat Shield halves heat_delta (1 -> 0)
-		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
+	for player in context.players:
+		var pid = player.peer_id
+		if busted.has(pid):
+			continue  # busted players keep heat_delta = 0 (set above)
+		var cash_out_at = float(cash_outs.get(pid, 0.0))
+		var won_crown = (pid == winner_peer_id)
+		var base_heat = HeatRules.rocket_heat(cash_out_at, won_crown)
+		var p_mods_heat = modifiers.get(pid, {})
+		result.per_player[pid]["heat_delta"] = HeatRules.apply_heat_shield(base_heat, p_mods_heat)
 	# Sub-project #7 Plan A Task 2: Sudden Death Jackpot via EventHelpers
 	for player in context.players:
 		var pid = player.peer_id
