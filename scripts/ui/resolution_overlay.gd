@@ -212,6 +212,12 @@ static func format_painful_reveal_card_cannon(payload: Dictionary) -> String:
 	var scores: Array = payload.get("scores_summary", [])
 
 	var lines: Array = []
+	# Build peer_id -> name map for combat-clause target lookup (Alpha
+	# remediation Phase D D.3 §9.6).
+	var name_by_pid: Dictionary = {}
+	for row in scores:
+		name_by_pid[int(row.get("peer_id", 0))] = String(row.get("name", "P?"))
+
 	# Headline
 	var winner_name = ""
 	for row in scores:
@@ -233,10 +239,11 @@ static func format_painful_reveal_card_cannon(payload: Dictionary) -> String:
 		var delta = int(row.get("chip_delta", 0))
 		var sign = "+" if delta >= 0 else ""
 		var crown_suffix = ", Crown"
+		var combat_clause = _format_card_cannon_combat_clause(row, name_by_pid)
 		if lscore == 21:
-			lines.append("  %s locked %d %s%d chips%s (PERFECT!)" % [name, lscore, sign, delta, crown_suffix])
+			lines.append("  %s locked %d%s %s%d chips%s (PERFECT!)" % [name, lscore, combat_clause, sign, delta, crown_suffix])
 		else:
-			lines.append("  %s locked %d %s%d chips%s" % [name, lscore, sign, delta, crown_suffix])
+			lines.append("  %s locked %d%s %s%d chips%s" % [name, lscore, combat_clause, sign, delta, crown_suffix])
 
 	# Other survivors (locked but not winner)
 	for row in scores:
@@ -249,7 +256,8 @@ static func format_painful_reveal_card_cannon(payload: Dictionary) -> String:
 		var lscore = int(row.get("locked_score", 0))
 		var delta = int(row.get("chip_delta", 0))
 		var sign = "+" if delta >= 0 else ""
-		lines.append("  %s locked %d %s%d chips" % [name, lscore, sign, delta])
+		var combat_clause = _format_card_cannon_combat_clause(row, name_by_pid)
+		lines.append("  %s locked %d%s %s%d chips" % [name, lscore, combat_clause, sign, delta])
 
 	# Busted players
 	for row in scores:
@@ -261,6 +269,17 @@ static func format_painful_reveal_card_cannon(payload: Dictionary) -> String:
 		lines.append("  %s overloaded at %d (%d chips)" % [name, score, delta])
 
 	return "\n".join(lines)
+
+# Alpha remediation Phase D D.3 (§9.6): build the "hit <target> for <n>"
+# clause for a Card Cannon scores_summary row. Returns "" if no attack
+# fired (locked <= 10 or no eligible target).
+static func _format_card_cannon_combat_clause(row: Dictionary, name_by_pid: Dictionary) -> String:
+	var target_pid = int(row.get("target_peer_id", 0))
+	var atk = int(row.get("attack_delta", 0))
+	if target_pid == 0 or atk <= 0:
+		return ""
+	var target_name = String(name_by_pid.get(target_pid, "P%d" % target_pid))
+	return ", hit %s for %d" % [target_name, atk]
 
 static func _format_painful_reveal_rocket(payload: Dictionary) -> String:
 	var lines: Array = []
