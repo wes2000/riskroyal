@@ -594,11 +594,11 @@ func _rpc_house_twist_announced(twist_dict: Dictionary) -> void:
 
 func submit_shop_buy(card_id: String) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
-	_send_rpc("_rpc_shop_buy_requested", [my_peer_id, card_id])
+	_send_rpc_to_host("_rpc_shop_buy_requested", [my_peer_id, card_id])
 
 func submit_shop_done() -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
-	_send_rpc("_rpc_shop_done", [my_peer_id])
+	_send_rpc_to_host("_rpc_shop_done", [my_peer_id])
 
 func _process_main_event() -> void:
 	if state.current_event_id.is_empty():
@@ -649,6 +649,7 @@ func _build_event_context():
 	ctx.event_index = state.event_index
 	ctx.rng_seed = state.rng_seed ^ (state.event_index * 0x9E3779B9)
 	ctx.is_host = is_host
+	ctx.host_peer_id = host_peer_id
 	if not state.pending_wagers.is_empty():
 		for p in ctx.players:
 			ctx.wagers[p.peer_id] = state.pending_wagers.get(p.peer_id, 0)

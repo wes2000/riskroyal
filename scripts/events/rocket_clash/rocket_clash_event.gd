@@ -53,7 +53,8 @@ func _on_cash_out_button_pressed() -> void:
 	var elapsed_ms = Time.get_ticks_msec() - _start_time_ms
 	var growth = _growth_rate_override if _growth_rate_override >= 0.0 else MatchConfig.ROCKET_GROWTH_RATE
 	var snapshot = multiplier_at(elapsed_ms, growth)
-	_send_rpc("_rpc_cash_out_requested", [my_peer_id, snapshot])
+	var host_peer_id = _stashed_context.host_peer_id if _stashed_context != null else 1
+	_send_rpc_to_host(host_peer_id, "_rpc_cash_out_requested", [my_peer_id, snapshot])
 
 func _run(context) -> void:
 	super._run(context)

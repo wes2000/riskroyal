@@ -21,24 +21,23 @@ func _run(context) -> void:
 func _send_rpc(method_name: String, args: Array = []) -> void:
 	if _multiplayer_node == null:
 		return
-	match args.size():
-		0: _multiplayer_node.rpc(method_name)
-		1: _multiplayer_node.rpc(method_name, args[0])
-		2: _multiplayer_node.rpc(method_name, args[0], args[1])
-		3: _multiplayer_node.rpc(method_name, args[0], args[1], args[2])
-		4: _multiplayer_node.rpc(method_name, args[0], args[1], args[2], args[3])
-		_:
-			push_error("EventNode._send_rpc: unsupported arity %d" % args.size())
+	var callable = Callable(_multiplayer_node, "rpc")
+	var combined = [method_name]
+	for a in args:
+		combined.append(a)
+	callable.callv(combined)
 
 func _send_rpc_to_peer(peer_id: int, method_name: String, args: Array = []) -> void:
 	if _multiplayer_node == null:
 		return
-	match args.size():
-		0: _multiplayer_node.rpc_id(peer_id, method_name)
-		1: _multiplayer_node.rpc_id(peer_id, method_name, args[0])
-		2: _multiplayer_node.rpc_id(peer_id, method_name, args[0], args[1])
-		_:
-			push_error("EventNode._send_rpc_to_peer: unsupported arity %d" % args.size())
+	var callable = Callable(_multiplayer_node, "rpc_id")
+	var combined = [peer_id, method_name]
+	for a in args:
+		combined.append(a)
+	callable.callv(combined)
+
+func _send_rpc_to_host(host_peer_id: int, method_name: String, args: Array = []) -> void:
+	_send_rpc_to_peer(host_peer_id, method_name, args)
 
 func get_event_id() -> String:
 	return "base"

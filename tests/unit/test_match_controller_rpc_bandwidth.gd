@@ -55,3 +55,11 @@ func test_submit_event_pick_targets_host_via_rpc_id():
 	assert_true(call.has("peer_id"),
 		"_rpc_event_picker_choice must use rpc_id")
 	assert_eq(int(call.get("peer_id", -1)), 1, "targets host")
+
+func test_submit_loadout_change_targets_host_via_rpc_id():
+	var c = _new_client_controller()
+	c.submit_loadout_change(["heat_shield", "place_bounty"])
+	var call = _find_call(c._rpc_sender._multiplayer_node, "_rpc_loadout_set")
+	assert_true(call.has("peer_id"),
+		"_rpc_loadout_set must use rpc_id")
+	assert_eq(int(call.get("peer_id", -1)), 1, "targets host")

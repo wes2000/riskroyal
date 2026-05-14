@@ -51,11 +51,13 @@ func _on_lock_button_pressed() -> void:
 
 func submit_draw() -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
-	_send_rpc("_rpc_draw_requested", [my_peer_id])
+	var host_peer_id = _stashed_context.host_peer_id if _stashed_context != null else 1
+	_send_rpc_to_host(host_peer_id, "_rpc_draw_requested", [my_peer_id])
 
 func submit_lock() -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
-	_send_rpc("_rpc_lock_requested", [my_peer_id])
+	var host_peer_id = _stashed_context.host_peer_id if _stashed_context != null else 1
+	_send_rpc_to_host(host_peer_id, "_rpc_lock_requested", [my_peer_id])
 
 func _run(context) -> void:
 	super._run(context)  # base self-wires _multiplayer_node
