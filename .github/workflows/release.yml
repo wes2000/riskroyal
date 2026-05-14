@@ -74,13 +74,27 @@ jobs:
       - name: Run unit tests
         run: |
           godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests/unit -gexit > test_out.txt 2>&1 || true
-          tail -25 test_out.txt
           # GUT prints "  Passing  <N>" and "  Failing  <N>"; fail the job if any failing.
           if grep -Eq "Failing +[1-9]" test_out.txt; then
+            echo "::group::Full test output (failure)"
+            cat test_out.txt
+            echo "::endgroup::"
+            echo "::group::Failing test detail"
+            grep -E "FAIL|failed|Failing|\\* test_" test_out.txt || true
+            echo "::endgroup::"
             echo "::error::Unit tests failed"
             exit 1
           fi
+          tail -25 test_out.txt
           grep -E "^Tests +[0-9]+|Passing +[0-9]+" test_out.txt || true
+
+      - name: Upload test output (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test_out.txt
+          if-no-files-found: ignore
 
       - name: Export Windows build
         run: |
