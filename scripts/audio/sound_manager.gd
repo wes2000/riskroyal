@@ -36,6 +36,44 @@ func play_button_press() -> void:
 func play_twist_stinger() -> void:
 	_play("twist_stinger")
 
+# Plan C Task 3: signal-to-SFX dispatcher.
+func bind_controller(controller) -> void:
+	if controller == null:
+		return
+	if not controller.player_busted.is_connected(_on_player_busted_for_sfx):
+		controller.player_busted.connect(_on_player_busted_for_sfx)
+	if not controller.crown_awarded.is_connected(_on_crown_awarded_for_sfx):
+		controller.crown_awarded.connect(_on_crown_awarded_for_sfx)
+	if not controller.house_twist_announced.is_connected(_on_house_twist_for_sfx):
+		controller.house_twist_announced.connect(_on_house_twist_for_sfx)
+	if not controller.match_ended.is_connected(_on_match_ended_for_sfx):
+		controller.match_ended.connect(_on_match_ended_for_sfx)
+
+func _on_player_busted_for_sfx(_peer_id: int, _chip_loss: int) -> void:
+	play_bust()
+
+func _on_crown_awarded_for_sfx(_peer_id: int, _count: int) -> void:
+	play_crown_win()
+
+func _on_house_twist_for_sfx(_twist_dict: Dictionary) -> void:
+	play_twist_stinger()
+
+func _on_match_ended_for_sfx(_rankings: Array) -> void:
+	play_match_end()
+
+static func signal_to_cue_name(signal_name: String) -> String:
+	match signal_name:
+		"player_busted":
+			return "bust"
+		"crown_awarded":
+			return "crown_win"
+		"house_twist_announced":
+			return "twist_stinger"
+		"match_ended":
+			return "match_end"
+		_:
+			return ""
+
 func _play(cue_name: String) -> void:
 	if not _players.has(cue_name):
 		return

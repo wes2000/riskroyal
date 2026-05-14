@@ -92,6 +92,10 @@ func _ready() -> void:
 	_build_status_grid()
 	_build_announcer()
 	_build_painful_reveal()
+	# Plan C Task 3: hook SoundManager (autoload) to the controller's
+	# 4 audible-trigger signals. Idempotent — scene reload re-binds.
+	if get_tree().root.has_node("SoundManager"):
+		get_tree().root.get_node("SoundManager").bind_controller(controller)
 	if session.is_host:
 		controller.start_match(match_start)
 
