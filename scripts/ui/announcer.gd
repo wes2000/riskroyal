@@ -31,6 +31,11 @@ func _ready() -> void:
 		# harnesses don't trip on missing signal.
 		if controller.has_signal("card_effect_applied"):
 			controller.card_effect_applied.connect(_on_card_effect_applied)
+		# Alpha remediation Phase G S1: rivalry banner when a player-placed
+		# bounty pays out. Auto-placed (Leader / Heat) bounties skip the
+		# banner — handler filters on bounty.origin == "placed".
+		if controller.has_signal("bounty_claimed"):
+			controller.bounty_claimed.connect(_on_bounty_claimed)
 
 func _on_house_twist_announced(twist_dict: Dictionary) -> void:
 	# Alpha remediation Phase F §12.3: resolve the target's display name
@@ -69,6 +74,17 @@ func _on_card_effect_applied(peer_id: int, card_id: String, effect_result: Dicti
 	if msg == "":
 		return
 	_enqueue(msg)
+
+func _on_bounty_claimed(claimant_peer_id: int, bounty_dict: Dictionary, _reward_chips: int) -> void:
+	# Alpha remediation Phase G S1 (Pillar #5): public callout when a
+	# player-placed bounty pays out. Auto-placed Leader / Heat bounties
+	# (origin == "leader" / "heat") are skipped to avoid announcer churn
+	# every event — only the personal "I called you out" beat surfaces.
+	if String(bounty_dict.get("origin", "")) != "placed":
+		return
+	var claimant_name = _name_for(claimant_peer_id)
+	var target_name = _name_for(int(bounty_dict.get("target", 0)))
+	_enqueue(format_bounty_claimed_text(claimant_name, target_name))
 
 func _on_match_ended(rankings: Array) -> void:
 	# Sub-project #7 Plan B C3 fixup: rankings[0] is a MatchPlayer Object
