@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 NetSessionMain="*res://scripts/net/net_session_main.gd"
+SoundManager="*res://scripts/audio/sound_manager.gd"
 
 [editor_plugins]
 
