@@ -19,7 +19,59 @@ func _on_phase_changed(phase: int) -> void:
 		_clear_lines()
 
 func _on_resolution_step(step_name: String, payload: Dictionary) -> void:
+	# Plan C Task 7: crown_awards step with delta >= 2 renders as a
+	# structured sequenced animation instead of a static string.
+	if step_name == "crown_awards":
+		var deltas = payload.get("deltas", [])
+		var has_stack: bool = false
+		var has_single: bool = false
+		for d in deltas:
+			if int(d.get("delta", 0)) >= 2:
+				has_stack = true
+				_append_crown_stack_line(int(d.get("peer_id", 0)), int(d.get("delta", 0)))
+			else:
+				has_single = true
+		if has_stack and not has_single:
+			return
+		if has_stack and has_single:
+			# Mixed payload: append the delta==1 rows alongside the stacks.
+			for d in deltas:
+				if int(d.get("delta", 0)) < 2:
+					_append_line(_format_crown_award_entry(int(d.get("peer_id", 0)), int(d.get("delta", 0))))
+			return
 	_append_line(format_resolution_step(step_name, payload))
+
+func _append_crown_stack_line(peer_id: int, delta: int) -> void:
+	if _lines == null:
+		return
+	var row = HBoxContainer.new()
+	var prefix_lbl = Label.new()
+	prefix_lbl.text = "P%d gets " % peer_id
+	row.add_child(prefix_lbl)
+	var first_crown = Label.new()
+	first_crown.text = "👑"
+	row.add_child(first_crown)
+	var second_crown = Label.new()
+	second_crown.text = "👑"
+	second_crown.modulate.a = 0.0
+	second_crown.position = Vector2(0.0, 20.0)
+	row.add_child(second_crown)
+	var count_lbl = Label.new()
+	count_lbl.text = " %d CROWNS " % delta
+	row.add_child(count_lbl)
+	var suffix_lbl = Label.new()
+	suffix_lbl.text = "(Sudden Death stack!)"
+	suffix_lbl.modulate.a = 0.0
+	row.add_child(suffix_lbl)
+	_lines.add_child(row)
+	var t = crown_stack_animation_timeline()
+	var tw = create_tween()
+	tw.tween_interval(float(t.delay_sec))
+	tw.set_parallel(true)
+	tw.tween_property(second_crown, "modulate:a", 1.0, float(t.second_crown_slide_sec))
+	tw.tween_property(second_crown, "position:y", 0.0, float(t.second_crown_slide_sec))
+	tw.set_parallel(false)
+	tw.tween_property(suffix_lbl, "modulate:a", 1.0, float(t.suffix_fade_sec))
 
 func _clear_lines() -> void:
 	if _lines == null:
@@ -82,6 +134,16 @@ static func format_resolution_step(step_name: String, payload: Dictionary) -> St
 			return "Painful reveal: P%d wins." % winner_pid
 		_:
 			return "(%s)" % step_name
+
+# Plan C Task 7: crown_delta=2 stack animation timeline.
+static func crown_stack_animation_timeline() -> Dictionary:
+	return {
+		"first_crown_fade_sec": 0.0,
+		"delay_sec": 0.3,
+		"second_crown_slide_sec": 0.4,
+		"suffix_fade_sec": 0.3,
+		"total_sec": 0.3 + 0.4 + 0.3,
+	}
 
 # Sub-project #7 Plan B Task 5: crown_delta=2 renders prominently.
 # Only happens when Sudden Death Jackpot stacks with the regular Crown.
