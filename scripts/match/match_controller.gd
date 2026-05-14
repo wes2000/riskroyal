@@ -42,6 +42,7 @@ signal event_picker_started(picker_peer_id: int, options: Array)
 signal event_picker_resolved(chosen_path: String, reason: String)
 signal status_changed(peer_id: int, status_string: String)
 signal bet_loadout_timer_tick(seconds_remaining: int)
+signal local_player_spectator_mode_entered(reason: String)
 
 var state: MatchState
 var is_host: bool = false
@@ -59,6 +60,11 @@ var resolution_step_delay_ms_override: int = -1
 # Test seam: override no-op phase auto-advance delay. -1 = use MatchConfig
 # default. 0 = advance synchronously (no await). >0 = use this delay in ms.
 var no_op_phase_delay_ms_override: int = -1
+
+# Plan C Task 9 test seam: lets unit tests force the "local peer id"
+# the controller compares against. In production this returns
+# multiplayer.get_unique_id().
+var _local_peer_id_override: int = 0
 
 # Factory injected by tests; production code uses _default_event_factory.
 # IMPORTANT: do NOT initialize at declaration — instance methods aren't
@@ -115,6 +121,37 @@ func _event_picker_timeout_sec() -> float:
 	if event_picker_timeout_sec_override >= 0.0:
 		return event_picker_timeout_sec_override
 	return float(MatchConfig.EVENT_PICKER_TIMEOUT_SEC)
+
+func _local_peer_id() -> int:
+	if _local_peer_id_override != 0:
+		return _local_peer_id_override
+	if multiplayer != null:
+		return multiplayer.get_unique_id()
+	return 0
+
+# Plan C Task 9: emits local_player_spectator_mode_entered if the
+# given peer_id is the LOCAL peer. Called from the bust path and
+# peer-drop path; each peer evaluates independently so the signal
+# only fires on the peer whose local player just lost active status.
+func notify_local_spectator_if_busted(peer_id: int) -> void:
+	if peer_id == _local_peer_id():
+		local_player_spectator_mode_entered.emit("busted")
+
+func notify_local_spectator_if_dropped(peer_id: int) -> void:
+	if peer_id == _local_peer_id():
+		local_player_spectator_mode_entered.emit("dropped")
+
+# Plan C Task 12: returns event-specific live state for SpectatorOverlay
+# to render. Default returns the watched peer's name only; events may
+# override by setting fields on the controller's state during the event
+# loop. This is a low-fidelity polish hook — the spectator label updates
+# whenever _process polls, even if event-specific data isn't wired yet.
+func get_spectator_ctx_data(peer_id: int) -> Dictionary:
+	if state == null:
+		return {"name": "P%d" % peer_id}
+	var p = state.find_player(peer_id)
+	var name = p.name if p != null else "P%d" % peer_id
+	return {"name": name}
 
 func _start_event_timeout_watchdog() -> void:
 	if not is_inside_tree():
@@ -852,6 +889,9 @@ func _build_busts_payload(result) -> Dictionary:
 			# (positive magnitude) for Announcer + PainfulReveal subscribers.
 			var loss = abs(int(result.per_player[pid].get("chip_delta", 0)))
 			player_busted.emit(pid, loss)
+			# Plan C Task 9: each peer evaluates if its OWN local player
+			# just busted. Only the affected peer's controller emits.
+			notify_local_spectator_if_busted(pid)
 	return {"bust_peer_ids": bust_ids}
 
 func _build_cash_outs_payload(result) -> Dictionary:

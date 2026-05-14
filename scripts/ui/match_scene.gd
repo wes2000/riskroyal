@@ -22,6 +22,9 @@ const EventPickerOverlayScene = preload("res://scenes/ui/event_picker_overlay.ts
 const StatusGridScene = preload("res://scenes/ui/status_grid.tscn")
 const AnnouncerScene = preload("res://scenes/ui/announcer.tscn")
 const PainfulRevealScene = preload("res://scenes/ui/painful_reveal.tscn")
+const SpectatorOverlayScene = preload("res://scenes/ui/spectator_overlay.tscn")
+const SettingsOverlayScene = preload("res://scenes/ui/settings_overlay.tscn")
+const SettingsOverlay = preload("res://scripts/ui/settings_overlay.gd")
 const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 
 @onready var _player_panels: HBoxContainer = $VBox/PlayerPanels if has_node("VBox/PlayerPanels") else null
@@ -40,6 +43,9 @@ const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 @onready var _status_grid_slot: Container = $VBox/StatusGridSlot if has_node("VBox/StatusGridSlot") else null
 @onready var _announcer_slot: Container = $VBox/AnnouncerSlot if has_node("VBox/AnnouncerSlot") else null
 @onready var _painful_reveal_slot: Container = $VBox/PainfulRevealSlot if has_node("VBox/PainfulRevealSlot") else null
+@onready var _spectator_slot: Container = $VBox/SpectatorSlot if has_node("VBox/SpectatorSlot") else null
+@onready var _settings_slot: Container = $SettingsSlot if has_node("SettingsSlot") else null
+@onready var _settings_button: Button = $SettingsButton if has_node("SettingsButton") else null
 @onready var _pause_overlay: PanelContainer = $PauseOverlay if has_node("PauseOverlay") else null
 
 var session  # NetSession-like
@@ -56,6 +62,8 @@ var _target_picker: Node = null
 var _status_grid: Node = null
 var _announcer: Node = null
 var _painful_reveal: Node = null
+var _spectator_overlay: Node = null
+var _settings_overlay: Node = null
 
 func _ready() -> void:
 	if session == null and get_tree().root.has_node("NetSessionMain"):
@@ -92,6 +100,17 @@ func _ready() -> void:
 	_build_status_grid()
 	_build_announcer()
 	_build_painful_reveal()
+	_build_spectator_overlay()
+	# Plan C Task 16: settings overlay + apply persisted text scale.
+	_build_settings_overlay()
+	var initial_scale = read_initial_text_scale()
+	SettingsOverlay.apply_text_scale(initial_scale, get_tree().root)
+	# Plan C Task 10: gate the play widgets when local peer becomes spectator.
+	controller.local_player_spectator_mode_entered.connect(_on_local_spectator_mode_entered)
+	# Plan C Task 3: hook SoundManager (autoload) to the controller's
+	# 4 audible-trigger signals. Idempotent — scene reload re-binds.
+	if get_tree().root.has_node("SoundManager"):
+		get_tree().root.get_node("SoundManager").bind_controller(controller)
 	if session.is_host:
 		controller.start_match(match_start)
 
@@ -297,6 +316,63 @@ func _build_painful_reveal() -> void:
 	_painful_reveal.controller = controller
 	_painful_reveal_slot.add_child(_painful_reveal)
 
+func _build_spectator_overlay() -> void:
+	if _spectator_slot == null:
+		return
+	_spectator_overlay = SpectatorOverlayScene.instantiate()
+	_spectator_overlay.controller = controller
+	_spectator_slot.add_child(_spectator_overlay)
+
+func _build_settings_overlay() -> void:
+	if _settings_slot == null:
+		return
+	_settings_overlay = SettingsOverlayScene.instantiate()
+	_settings_slot.add_child(_settings_overlay)
+	if _settings_button != null:
+		_settings_button.pressed.connect(_on_settings_button_pressed)
+
+func _on_settings_button_pressed() -> void:
+	if _settings_overlay != null and _settings_overlay.has_method("open"):
+		_settings_overlay.open()
+
+func _on_local_spectator_mode_entered(_reason: String) -> void:
+	# Plan C Task 10: hide play widgets, show SpectatorOverlay.
+	# Reversal is NOT supported in MVP — once a peer goes spectator
+	# they stay for the rest of the match.
+	var widgets = {
+		"BetLoadoutOverlay": _bet_loadout_overlay,
+		"LoadoutOverlay": _loadout_overlay,
+		"EventPickerOverlay": _event_picker_overlay,
+		"CashOutCardDrawer": _cash_out_drawer,
+		"CashOutCardDrawerTargetPicker": _target_picker,
+		"SpectatorOverlay": _spectator_overlay,
+	}
+	apply_spectator_visibility(widgets, true)
+	# Plan C Task 11: shift always-visible widgets to the left 60%
+	# so the SpectatorOverlay (right 40%) renders cleanly.
+	if _status_grid != null and _status_grid.has_method("set_compact"):
+		_status_grid.set_compact(true)
+	if _announcer != null and _announcer.has_method("set_compact"):
+		_announcer.set_compact(true)
+	if _painful_reveal != null and _painful_reveal.has_method("set_compact"):
+		_painful_reveal.set_compact(true)
+
+# Plan C Task 10: the 5 play widgets to hide when entering spectator mode.
+static func widgets_to_hide_on_spectator() -> Array[String]:
+	return ["BetLoadoutOverlay", "LoadoutOverlay", "EventPickerOverlay", "CashOutCardDrawer", "CashOutCardDrawerTargetPicker"]
+
+# Static helper: flip visibility based on the spectator flag. Accepts a
+# Dictionary of widget references (any with a .visible property) so the
+# unit test can pass plain Dictionaries without instantiating real Nodes.
+static func apply_spectator_visibility(widgets: Dictionary, spectator_mode: bool) -> void:
+	for name in widgets_to_hide_on_spectator():
+		var w = widgets.get(name, null)
+		if w != null:
+			w.visible = not spectator_mode
+	var spec = widgets.get("SpectatorOverlay", null)
+	if spec != null:
+		spec.visible = spectator_mode
+
 # Static formatter (testable). Takes total_events as a parameter so the
 # caller chooses the count (production passes MatchConfig.QUICK_CLASH_EVENT_COUNT).
 static func format_phase_indicator(event_index: int, total_events: int, phase: int) -> String:
@@ -304,3 +380,9 @@ static func format_phase_indicator(event_index: int, total_events: int, phase: i
 		return "Match End"
 	var phase_name = MatchPhase.name_for(phase)
 	return "Event %d/%d: %s" % [event_index + 1, total_events, phase_name]
+
+# Plan C Task 16: wraps SettingsOverlay.load_persisted_scale with an
+# optional path argument so unit tests use test-specific cfg files
+# without polluting real user:// data.
+static func read_initial_text_scale(path: String = SettingsOverlay.DEFAULT_CFG_PATH) -> float:
+	return SettingsOverlay.load_persisted_scale(path)

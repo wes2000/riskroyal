@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/spectator_overlay.gd" id="1"]
+
+[node name="SpectatorOverlay" type="Control"]
+script = ExtResource("1")
+anchor_left = 0.6
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Margin" type="MarginContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBox" type="VBoxContainer" parent="Margin"]
+
+[node name="Title" type="Label" parent="Margin/VBox"]
+text = "SPECTATING"
+theme_override_font_sizes/font_size = 28
+
+[node name="LeaderboardBox" type="VBoxContainer" parent="Margin/VBox"]
+
+[node name="EventStatusLabel" type="Label" parent="Margin/VBox"]
+text = ""
+
+[node name="ProgressLabel" type="Label" parent="Margin/VBox"]
+text = ""

@@ -14,6 +14,7 @@ var controller  # MatchController-like
 
 var _queue: Array = []
 var _showing: bool = false
+var _active_tween: Tween = null
 
 func _ready() -> void:
 	visible = false
@@ -77,6 +78,14 @@ func _enqueue(message: String) -> void:
 	if not _showing:
 		_show_next()
 
+# Plan C Task 11: compact mode shrinks the banner to the left 60%
+# so the spectator leaderboard on the right 40% isn't occluded.
+func set_compact(compact: bool) -> void:
+	if compact:
+		anchor_right = 0.6
+	else:
+		anchor_right = 1.0
+
 func _show_next() -> void:
 	if _queue.is_empty():
 		_showing = false
@@ -86,12 +95,21 @@ func _show_next() -> void:
 	var msg: String = _queue.pop_front()
 	if _message_label != null:
 		_message_label.text = msg
+	# Plan C Task 4: sequenced slide-in + bounce + slide-out.
+	if _active_tween != null and _active_tween.is_valid():
+		_active_tween.kill()
 	visible = true
 	modulate.a = 1.0
-	var tween = create_tween()
-	tween.tween_interval(DISPLAY_DURATION_SEC * 0.75)
-	tween.tween_property(self, "modulate:a", 0.0, DISPLAY_DURATION_SEC * 0.25)
-	tween.tween_callback(_show_next)
+	position.y = -100.0
+	var t = animation_timeline()
+	_active_tween = create_tween()
+	_active_tween.tween_property(self, "position:y", 0.0, float(t.slide_in_sec)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_active_tween.tween_interval(float(t.hold_sec))
+	_active_tween.set_parallel(true)
+	_active_tween.tween_property(self, "position:y", -100.0, float(t.slide_out_sec))
+	_active_tween.tween_property(self, "modulate:a", 0.0, float(t.slide_out_sec))
+	_active_tween.set_parallel(false)
+	_active_tween.tween_callback(_show_next)
 
 # Static formatters (testable without scene)
 
@@ -102,12 +120,22 @@ static func format_twist_text(twist_dict: Dictionary) -> String:
 	return "HOUSE TWIST: %s!" % title
 
 static func format_bust_text(peer_name: String, chip_loss: int) -> String:
-	return "%s EJECTED! -%d chips" % [peer_name, chip_loss]
+	return "✗ %s EJECTED! -%d chips" % [peer_name, chip_loss]
 
 static func format_crown_text(peer_name: String, crown_count: int) -> String:
 	if crown_count >= 2:
-		return "%s WINS %d CROWNS!" % [peer_name, crown_count]
-	return "%s WINS THE CROWN!" % peer_name
+		return "👑 %s WINS %d CROWNS!" % [peer_name, crown_count]
+	return "👑 %s WINS THE CROWN!" % peer_name
 
 static func format_match_outcome_text(_winner_peer_id: int, winner_name: String) -> String:
 	return "%s WINS THE MATCH!" % winner_name
+
+# Plan C Task 4: animation timeline durations exposed as a Dictionary
+# so unit tests can assert the stage lengths without running a real Tween.
+static func animation_timeline() -> Dictionary:
+	return {
+		"slide_in_sec": 0.3,
+		"hold_sec": 2.5,
+		"slide_out_sec": 0.3,
+		"total_sec": 0.3 + 2.5 + 0.3,
+	}
