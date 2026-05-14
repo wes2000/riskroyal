@@ -33,6 +33,12 @@ custom_minimum_size = Vector2(0, 200)
 
 [node name="TargetPickerSlot" type="Container" parent="VBox"]
 
+[node name="StatusGridSlot" type="Container" parent="VBox"]
+
+[node name="AnnouncerSlot" type="Container" parent="VBox"]
+
+[node name="PainfulRevealSlot" type="Container" parent="VBox"]
+
 [node name="ShopSlot" type="Container" parent="VBox"]
 
 [node name="ResolutionSlot" type="Container" parent="VBox"]

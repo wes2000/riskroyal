@@ -670,6 +670,12 @@ func _build_event_context():
 	ctx.rng_seed = state.rng_seed ^ (state.event_index * 0x9E3779B9)
 	ctx.is_host = is_host
 	ctx.host_peer_id = host_peer_id
+	# Sub-project #7 Plan B C1 fixup: controller reference so event nodes
+	# can route _rpc_status_changed (declared on this class) via the host
+	# controller. Without this, EventNode._send_rpc would dispatch the RPC
+	# to the event's own _multiplayer_node (== self), which has no such
+	# method — StatusGrid would receive zero updates in production.
+	ctx.controller = self
 	if not state.pending_wagers.is_empty():
 		for p in ctx.players:
 			ctx.wagers[p.peer_id] = state.pending_wagers.get(p.peer_id, 0)
@@ -1132,10 +1138,11 @@ func _rpc_bounty_claimed(claimant_peer_id: int, bounty_dict: Dictionary, reward_
 func _rpc_bounty_unclaimed(bounty_dict: Dictionary) -> void:
 	bounty_unclaimed.emit(bounty_dict)
 
-@rpc("authority", "call_local", "reliable")
+@rpc("authority", "call_remote", "reliable")
 func _rpc_status_changed(peer_id: int, status_string: String) -> void:
-	# Sub-project #7 Plan B Task 2: per-event status broadcast.
-	# call_local means the host's own call fires locally too, so widgets
-	# on the host update without a separate emit. Clients receive it via
-	# the network path. Re-emits the local signal so StatusGrid updates.
+	# Sub-project #7 Plan B Task 2 + C1 fixup: per-event status broadcast.
+	# call_remote — the host does NOT receive its own broadcast; instead
+	# EventNode._emit_status_changed emits status_changed.emit directly on
+	# the controller host-side, then broadcasts via _send_rpc to clients.
+	# This avoids double-emit on the host while still updating clients.
 	status_changed.emit(peer_id, status_string)

@@ -40,10 +40,26 @@ func _on_crown_awarded(peer_id: int, count: int) -> void:
 	_enqueue(format_crown_text(peer_name, count))
 
 func _on_match_ended(rankings: Array) -> void:
+	# Sub-project #7 Plan B C3 fixup: rankings[0] is a MatchPlayer Object
+	# (see MatchController._process_match_end + _rpc_match_ended), not a
+	# Dictionary nor an int. The previous code did `int(rankings[0])`
+	# which silently produced 0 — the banner would always say "P0 WINS
+	# THE MATCH!". Read peer_id + name directly off the Object, with a
+	# defensive Dictionary fallback in case a test or future code path
+	# serializes the rankings before re-emit.
 	if rankings.is_empty():
 		return
-	var winner_pid = int(rankings[0])
-	var winner_name = _name_for(winner_pid)
+	var top = rankings[0]
+	if top == null:
+		return
+	var winner_pid: int = 0
+	var winner_name: String = ""
+	if top is Dictionary:
+		winner_pid = int(top.get("peer_id", 0))
+		winner_name = String(top.get("name", _name_for(winner_pid)))
+	else:
+		winner_pid = int(top.peer_id)
+		winner_name = String(top.name)
 	_enqueue(format_match_outcome_text(winner_pid, winner_name))
 
 func _name_for(peer_id: int) -> String:

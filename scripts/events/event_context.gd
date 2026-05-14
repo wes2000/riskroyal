@@ -14,6 +14,11 @@ var host_peer_id: int = 1
 var event_modifiers: Dictionary = {}  # Per-peer-id pre-event card flags. Populated by MatchController._build_event_context from state.event_modifiers.
 var house_twist: Dictionary = {}  # Snapshot from state.house_twist at MAIN_EVENT entry
 var tuning: Dictionary = {}       # Per-event tunable values populated by each event's _run
+# Sub-project #7 Plan B C1 fixup: reference to the owning MatchController so
+# event nodes can route signals/RPCs through the controller (where the @rpc
+# methods are declared). Not serialized to/from dict — only set host-side by
+# MatchController._build_event_context for use during _run.
+var controller = null
 
 func to_dict() -> Dictionary:
 	var player_dicts: Array = []
