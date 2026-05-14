@@ -372,7 +372,28 @@ func _process_ante_phase() -> void:
 			p.chips -= ante
 			p.is_active_this_event = true
 			player_resources_changed.emit(p.peer_id)
-			deltas.append({"peer_id": p.peer_id, "chip_delta": -ante, "crown_delta": 0, "heat_delta": 0})
+			deltas.append({"peer_id": p.peer_id, "chip_delta": -ante, "crown_delta": 0, "heat_delta": 0, "debt_delta": 0})
+		elif p.chips + MatchConfig.HOUSE_LOAN_AMOUNT >= ante \
+				and p.debt + MatchConfig.HOUSE_LOAN_AMOUNT <= MatchConfig.MAX_DEBT:
+			# Alpha feel remediation Phase E §10.3 (Debt-Lite Comeback):
+			# auto-accept a House Loan so the player stays in the event
+			# instead of being silently skipped. Adds loan to chips and
+			# debt, pays ante from the topped-up chip stack, and applies
+			# a +1 Heat stigma (clamped at HEAT_MAX).
+			p.debt += MatchConfig.HOUSE_LOAN_AMOUNT
+			p.chips += MatchConfig.HOUSE_LOAN_AMOUNT - ante
+			var prev_heat = p.heat
+			p.heat = clamp(p.heat + 1, 0, MatchConfig.HEAT_MAX)
+			var heat_d = p.heat - prev_heat
+			p.is_active_this_event = true
+			player_resources_changed.emit(p.peer_id)
+			deltas.append({
+				"peer_id": p.peer_id,
+				"chip_delta": MatchConfig.HOUSE_LOAN_AMOUNT - ante,
+				"crown_delta": 0,
+				"heat_delta": heat_d,
+				"debt_delta": MatchConfig.HOUSE_LOAN_AMOUNT,
+			})
 		else:
 			p.is_active_this_event = false
 	if deltas.size() > 0 and is_host:
@@ -1162,12 +1183,18 @@ func _rpc_apply_deltas(deltas: Array) -> void:
 		var chip_d = int(d.get("chip_delta", 0))
 		var crown_d = int(d.get("crown_delta", 0))
 		var heat_d = int(d.get("heat_delta", 0))
+		# Alpha feel remediation Phase E §10.3: mirror host-side debt
+		# mutation (House Loan accrual + garnish repayments). Clamp at 0
+		# so debt never goes negative.
+		var debt_d = int(d.get("debt_delta", 0))
 		if chip_d != 0:
 			p.chips += chip_d
 		if crown_d != 0:
 			p.crowns += crown_d
 		if heat_d != 0:
 			p.heat = clamp(p.heat + heat_d, 0, MatchConfig.HEAT_MAX)
+		if debt_d != 0:
+			p.debt = max(0, p.debt + debt_d)
 		player_resources_changed.emit(pid)
 
 @rpc("authority", "call_remote", "reliable")
