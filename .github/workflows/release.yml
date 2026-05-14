@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  GODOT_VERSION: '4.6'
+  GODOT_VERSION: '4.6.2'
   GODOT_STATUS: stable
   EXPORT_NAME: riskroyal
 

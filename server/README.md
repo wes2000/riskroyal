@@ -18,7 +18,7 @@ Set `LOG_LEVEL=debug` for verbose handshake tracing.
 One-time setup:
 
     flyctl auth login
-    flyctl apps create riskroyal-signaling
+    flyctl apps create riskroyal
 
 Deploy:
 
@@ -34,6 +34,8 @@ The default `fly.toml` uses the smallest shared VM (256 MB) and auto-stops when 
 
 After deploy, the signaling URL for the Godot client is:
 
-    wss://riskroyal-signaling.fly.dev
+    wss://riskroyal.fly.dev
+
+(The Fly app is named `riskroyal`; URL = `wss://<app>.fly.dev`.)
 
 (Update the Godot client's `NetConfig.SIGNALING_URL` once deployed.)
