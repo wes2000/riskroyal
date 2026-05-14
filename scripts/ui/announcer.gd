@@ -27,7 +27,13 @@ func _ready() -> void:
 		controller.match_ended.connect(_on_match_ended)
 
 func _on_house_twist_announced(twist_dict: Dictionary) -> void:
-	var msg = format_twist_text(twist_dict)
+	# Alpha remediation Phase F §12.3: resolve the target's display name
+	# from state so the callout reads e.g. "HOUSE TWIST: Leader Cursed —
+	# Maya's next reward is cut." Untargeted twists pass "" through.
+	var params = twist_dict.get("params", {})
+	var target_pid = int(params.get("target_peer_id", 0))
+	var target_name = "" if target_pid == 0 else _name_for(target_pid)
+	var msg = format_twist_text(twist_dict, target_name)
 	if msg == "":
 		return
 	_enqueue(msg)
@@ -113,11 +119,27 @@ func _show_next() -> void:
 
 # Static formatters (testable without scene)
 
-static func format_twist_text(twist_dict: Dictionary) -> String:
+static func format_twist_text(twist_dict: Dictionary, target_name: String = "") -> String:
 	var title = HouseTwistOverlay.format_twist_title(twist_dict)
 	if title == "":
 		return ""
+	# Alpha remediation Phase F §12.3: targeted twists get a "— <Name>'s …"
+	# suffix derived from the subtitle's second sentence. Untargeted twists
+	# keep the legacy "HOUSE TWIST: <Title>!" form.
+	var subtitle = HouseTwistOverlay.format_twist_subtitle(twist_dict, target_name)
+	var second_sentence = _second_sentence(subtitle)
+	if target_name != "" and second_sentence != "":
+		return "HOUSE TWIST: %s — %s" % [title, second_sentence]
 	return "HOUSE TWIST: %s!" % title
+
+# Returns everything after the first sentence-ending period, trimmed.
+# "Leader Cursed. Maya's next reward is cut." → "Maya's next reward is cut."
+# "Leader Cursed." (title-only fallback) → "".
+static func _second_sentence(subtitle: String) -> String:
+	var idx = subtitle.find(". ")
+	if idx < 0:
+		return ""
+	return subtitle.substr(idx + 2).strip_edges()
 
 static func format_bust_text(peer_name: String, chip_loss: int) -> String:
 	return "✗ %s EJECTED! -%d chips" % [peer_name, chip_loss]
