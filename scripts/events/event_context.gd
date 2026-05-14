@@ -10,6 +10,7 @@ var event_index: int = 0
 var rng_seed: int = 0
 var wagers: Dictionary = {}
 var is_host: bool = false
+var host_peer_id: int = 1
 var event_modifiers: Dictionary = {}  # Per-peer-id pre-event card flags. Populated by MatchController._build_event_context from state.event_modifiers.
 var house_twist: Dictionary = {}  # Snapshot from state.house_twist at MAIN_EVENT entry
 var tuning: Dictionary = {}       # Per-event tunable values populated by each event's _run
@@ -24,6 +25,7 @@ func to_dict() -> Dictionary:
 		"rng_seed": rng_seed,
 		"wagers": wagers,
 		"is_host": is_host,
+		"host_peer_id": host_peer_id,
 		"event_modifiers": event_modifiers.duplicate(true),
 		"house_twist": house_twist.duplicate(true),
 		"tuning": tuning.duplicate(true),
@@ -35,6 +37,7 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	c.rng_seed = d.get("rng_seed", 0)
 	c.wagers = d.get("wagers", {})
 	c.is_host = d.get("is_host", false)
+	c.host_peer_id = d.get("host_peer_id", 1)
 	c.event_modifiers = d.get("event_modifiers", {}).duplicate(true)
 	c.house_twist = d.get("house_twist", {}).duplicate(true)
 	c.tuning = d.get("tuning", {}).duplicate(true)

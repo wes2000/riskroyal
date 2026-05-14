@@ -8,6 +8,7 @@ extends "res://scripts/events/event_node.gd"
 
 const MatchConfig = preload("res://scripts/match/match_config.gd")
 const EventResult = preload("res://scripts/events/event_result.gd")
+const EventHelpers = preload("res://scripts/match/event_helpers.gd")
 
 # Per-round state
 var _hands: Dictionary = {}             # peer_id -> Array[int] ranks drawn
@@ -50,11 +51,13 @@ func _on_lock_button_pressed() -> void:
 
 func submit_draw() -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
-	_send_rpc("_rpc_draw_requested", [my_peer_id])
+	var host_peer_id = _stashed_context.host_peer_id if _stashed_context != null else 1
+	_send_rpc_to_host(host_peer_id, "_rpc_draw_requested", [my_peer_id])
 
 func submit_lock() -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
-	_send_rpc("_rpc_lock_requested", [my_peer_id])
+	var host_peer_id = _stashed_context.host_peer_id if _stashed_context != null else 1
+	_send_rpc_to_host(host_peer_id, "_rpc_lock_requested", [my_peer_id])
 
 func _run(context) -> void:
 	super._run(context)  # base self-wires _multiplayer_node
@@ -194,7 +197,7 @@ static func compute_event_result(context, hands: Dictionary, locked_scores: Dict
 	var winner_score = 0
 	var winner_seat = INF
 	var modifiers = {}
-	if context != null and "event_modifiers" in context:
+	if context != null:
 		modifiers = context.event_modifiers
 	for player in context.players:
 		var pid = player.peer_id
@@ -223,13 +226,8 @@ static func compute_event_result(context, hands: Dictionary, locked_scores: Dict
 			var um = float(p_mods.get("underdog_multiplier", 1.0))
 			if um != 1.0:
 				chip_delta = int(chip_delta * um)
-			# Sub-project #6 Plan A: Leader Cursed reduces leader's survivor reward
-			if context != null:
-				var ht = context.house_twist
-				if ht.get("type", "") == "leader_cursed" and int(ht.get("params", {}).get("leader_peer_id", 0)) == pid:
-					var lc_mult = float(ht.get("params", {}).get("reward_multiplier", 1.0))
-					if lc_mult != 1.0:
-						chip_delta = int(chip_delta * lc_mult)
+			# Sub-project #7 Plan A Task 4: Leader Cursed via EventHelpers
+			chip_delta = EventHelpers.apply_leader_cursed(context, pid, chip_delta)
 			result.per_player[pid] = {
 				"chip_delta": chip_delta, "crown_delta": 0, "heat_delta": 0,
 				"bust": false, "cash_out_at": 0.0,
@@ -252,20 +250,11 @@ static func compute_event_result(context, hands: Dictionary, locked_scores: Dict
 		if winner_mods.get("heat_shield", false):
 			heat_delta = int(heat_delta / 2)
 		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
-	# Sub-project #6 Plan B Task 9: Sudden Death Jackpot bonus crown.
-	# Each surviving player whose locked score equals exactly 21 earns
-	# +1 crown_delta. Stacks with the regular highest-locked-score
-	# Crown. Sub-project #7: extract to EventHelpers.apply_sudden_death_bonus.
-	if context != null:
-		var ht = context.house_twist
-		if ht.get("type", "") == "sudden_death_jackpot" \
-				and String(ht.get("params", {}).get("condition", "")) == "locked_at_perfect":
-			for player in context.players:
-				var pid = player.peer_id
-				if busted.get(pid, false):
-					continue
-				if int(locked_scores.get(pid, 0)) == 21:
-					result.per_player[pid].crown_delta = int(result.per_player[pid].get("crown_delta", 0)) + 1
+	# Sub-project #7 Plan A Task 4: Sudden Death Jackpot via EventHelpers
+	for player in context.players:
+		var pid = player.peer_id
+		var survives = not busted.get(pid, false) and int(locked_scores.get(pid, 0)) == 21
+		EventHelpers.apply_sudden_death_bonus(context, pid, result.per_player, "locked_at_perfect", survives)
 	result.painful_reveal = {
 		"winner_peer_id": winner_peer_id,
 		"winner_score": winner_score,
