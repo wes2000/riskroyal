@@ -1,0 +1,20 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/cash_out_card_drawer_target_picker.gd" id="1"]
+
+[node name="CashOutCardDrawerTargetPicker" type="CenterContainer"]
+script = ExtResource("1")
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="."]
+
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+
+[node name="Title" type="Label" parent="Panel/VBox"]
+text = "Choose a target"
+
+[node name="Row" type="VBoxContainer" parent="Panel/VBox"]
+
+[node name="CancelButton" type="Button" parent="Panel/VBox"]
+text = "Cancel"

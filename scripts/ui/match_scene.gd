@@ -16,6 +16,7 @@ const LoadoutOverlayScene = preload("res://scenes/ui/loadout_overlay.tscn")
 const ShopOverlayScene = preload("res://scenes/ui/shop_overlay.tscn")
 const BountyPanelScene = preload("res://scenes/ui/bounty_panel.tscn")
 const CashOutCardDrawerScene = preload("res://scenes/ui/cash_out_card_drawer.tscn")
+const CashOutCardDrawerTargetPickerScene = preload("res://scenes/ui/cash_out_card_drawer_target_picker.tscn")
 const HouseTwistOverlayScene = preload("res://scenes/ui/house_twist_overlay.tscn")
 const EventPickerOverlayScene = preload("res://scenes/ui/event_picker_overlay.tscn")
 const NetSessionState = preload("res://scripts/data/net_session_state.gd")
@@ -32,6 +33,7 @@ const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 @onready var _house_twist_slot: Container = $VBox/HouseTwistSlot if has_node("VBox/HouseTwistSlot") else null
 @onready var _event_picker_slot: Container = $VBox/EventPickerSlot if has_node("VBox/EventPickerSlot") else null
 @onready var _cash_out_slot: Container = $VBox/CashOutSlot if has_node("VBox/CashOutSlot") else null
+@onready var _target_picker_slot: Container = $VBox/TargetPickerSlot if has_node("VBox/TargetPickerSlot") else null
 @onready var _pause_overlay: PanelContainer = $PauseOverlay if has_node("PauseOverlay") else null
 
 var session  # NetSession-like
@@ -44,6 +46,7 @@ var _bounty_panel: Node = null
 var _cash_out_drawer: Node = null
 var _house_twist_overlay: Node = null
 var _event_picker_overlay: Node = null
+var _target_picker: Node = null
 
 func _ready() -> void:
 	if session == null and get_tree().root.has_node("NetSessionMain"):
@@ -70,6 +73,7 @@ func _ready() -> void:
 	_build_shop_overlay()
 	_build_bounty_panel()
 	_build_cash_out_drawer()
+	_build_target_picker()
 	_build_house_twist_overlay()
 	_build_event_picker_overlay()
 	if session.is_host:
@@ -218,6 +222,25 @@ func _build_cash_out_drawer() -> void:
 	_cash_out_drawer.controller = controller
 	_cash_out_drawer.local_player = _find_local_player()
 	_cash_out_slot.add_child(_cash_out_drawer)
+	_cash_out_drawer.target_required_card_pressed.connect(_on_target_required_card_pressed)
+
+func _build_target_picker() -> void:
+	if _target_picker_slot == null:
+		return
+	_target_picker = CashOutCardDrawerTargetPickerScene.instantiate()
+	_target_picker.controller = controller
+	var local = _find_local_player()
+	if local != null:
+		_target_picker.local_peer_id = local.peer_id
+	_target_picker_slot.add_child(_target_picker)
+
+func _on_target_required_card_pressed(card_id: String) -> void:
+	if _target_picker == null or controller == null:
+		return
+	var players: Array = []
+	if controller.state != null:
+		players = controller.state.players
+	_target_picker.open_for_card(card_id, players)
 
 func _build_house_twist_overlay() -> void:
 	if _house_twist_slot == null:
