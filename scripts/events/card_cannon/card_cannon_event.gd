@@ -192,6 +192,46 @@ static func compute_score(hand: Array) -> int:
 		aces -= 1
 	return total
 
+# Alpha remediation Phase D Change 5 (§9.3): Card Cannon target selection.
+# Players may set their target via state.event_modifiers[pid][
+# "card_cannon_target_peer_id"] during BET_LOADOUT (typically via a card
+# or future picker UI). If no target is set or the explicit target is
+# invalid, auto-default to highest-Crown opponent, ties broken by Heat,
+# full ties broken by lowest seat_index. Self never auto-targets self;
+# inactive opponents are skipped.
+static func resolve_target_peer_id(context, shooter_peer_id: int) -> int:
+	if context == null:
+		return 0
+	# Explicit target from event_modifiers takes precedence.
+	var p_mods = context.event_modifiers.get(shooter_peer_id, {})
+	var explicit = int(p_mods.get("card_cannon_target_peer_id", 0))
+	if explicit != 0 and explicit != shooter_peer_id:
+		# Verify the explicit target is a real, active opponent.
+		for player in context.players:
+			if int(player.peer_id) == explicit and player.is_active_this_event:
+				return explicit
+		# Explicit target invalid — fall through to auto-default.
+	# Auto-default: highest crowns among active opponents, tie-break by
+	# heat, then by lowest seat_index.
+	var best_peer_id: int = 0
+	var best_crowns: int = -1
+	var best_heat: int = -1
+	var best_seat: int = 999999
+	for player in context.players:
+		if int(player.peer_id) == shooter_peer_id:
+			continue
+		if not player.is_active_this_event:
+			continue
+		var crowns = int(player.crowns)
+		var heat = int(player.heat)
+		var seat = int(player.seat_index)
+		if crowns > best_crowns or (crowns == best_crowns and heat > best_heat) or (crowns == best_crowns and heat == best_heat and seat < best_seat):
+			best_peer_id = int(player.peer_id)
+			best_crowns = crowns
+			best_heat = heat
+			best_seat = seat
+	return best_peer_id
+
 static func compute_event_result(context, hands: Dictionary, locked_scores: Dictionary, busted: Dictionary) -> RefCounted:
 	var result = EventResult.new()
 	result.event_id = "card_cannon"
