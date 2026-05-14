@@ -1,3 +1,13 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Godot 4.4+ regenerates *.uid alongside *.gd on import — never commit these
+*.uid
+
+# IDE / agent caches
+.claude/
+
+# Test runner output
+test_output.txt
+integration_output.txt
