@@ -1,0 +1,34 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/settings_overlay.gd" id="1"]
+
+[node name="SettingsOverlay" type="CenterContainer"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="PanelContainer" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(320, 0)
+
+[node name="VBox" type="VBoxContainer" parent="PanelContainer"]
+
+[node name="TitleLabel" type="Label" parent="PanelContainer/VBox"]
+text = "Settings"
+horizontal_alignment = 1
+
+[node name="ScaleLabel" type="Label" parent="PanelContainer/VBox"]
+text = "Text Scale"
+
+[node name="ScaleButtons" type="HBoxContainer" parent="PanelContainer/VBox"]
+
+[node name="Scale1_0Button" type="Button" parent="PanelContainer/VBox/ScaleButtons"]
+text = "1.0x"
+
+[node name="Scale1_25Button" type="Button" parent="PanelContainer/VBox/ScaleButtons"]
+text = "1.25x"
+
+[node name="Scale1_5Button" type="Button" parent="PanelContainer/VBox/ScaleButtons"]
+text = "1.5x"
+
+[node name="CloseButton" type="Button" parent="PanelContainer/VBox"]
+text = "Close"
