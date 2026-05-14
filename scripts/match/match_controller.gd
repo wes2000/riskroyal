@@ -897,23 +897,25 @@ func _deal_starter_pack() -> void:
 	var pool = CardRegistry.starter_pool()
 	if pool.is_empty():
 		return
-	var serialized_hands: Dictionary = {}
+	# Sub-project #7 Plan A Task 11: narrow from one broadcast-with-all-hands
+	# to one rpc_id per peer with just that peer's hand. Apply hand
+	# locally on host first, then send each peer their own hand.
 	for p in state.players:
 		var hand: Array = []
 		for i in MatchConfig.STARTER_PACK_SIZE:
 			var idx = state.rng.randi() % pool.size()
 			hand.append(pool[idx])
 		p.hand = hand
-		serialized_hands[p.peer_id] = hand.duplicate()
-	_send_rpc("_rpc_starter_pack_dealt", [serialized_hands])
+		_send_rpc_to_peer(p.peer_id, "_rpc_starter_pack_dealt", [p.peer_id, hand.duplicate()])
 
 @rpc("authority", "call_remote", "reliable")
-func _rpc_starter_pack_dealt(hands: Dictionary) -> void:
-	for pid_key in hands.keys():
-		var pid = int(pid_key)
-		var p = state.find_player(pid)
-		if p != null:
-			p.hand = hands[pid_key].duplicate()
+func _rpc_starter_pack_dealt(peer_id: int, hand: Array) -> void:
+	# Sub-project #7 Plan A Task 11: per-peer narrowing — receiver now
+	# only knows its own hand. Other peers' hands stay private (defensive
+	# vs future leak; today all client peers still see public events).
+	var p = state.find_player(peer_id)
+	if p != null:
+		p.hand = hand.duplicate()
 
 func _process_match_end() -> void:
 	var rankings = state.players.duplicate()
