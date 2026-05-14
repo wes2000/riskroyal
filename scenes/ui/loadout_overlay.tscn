@@ -14,5 +14,9 @@ text = "Your Cards"
 
 [node name="LoadoutRow" type="HBoxContainer" parent="VBox"]
 
+[node name="LoadoutSlot0" type="PanelContainer" parent="VBox/LoadoutRow"]
+
+[node name="LoadoutSlot1" type="PanelContainer" parent="VBox/LoadoutRow"]
+
 [node name="HintLabel" type="Label" parent="VBox"]
 text = "Hand: 0 / Loadout: 0"
