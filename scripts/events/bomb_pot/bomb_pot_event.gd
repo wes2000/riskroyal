@@ -9,6 +9,7 @@ extends "res://scripts/events/event_node.gd"
 
 const MatchConfig = preload("res://scripts/match/match_config.gd")
 const EventResult = preload("res://scripts/events/event_result.gd")
+const EventHelpers = preload("res://scripts/match/event_helpers.gd")
 
 # Per-round state (host populates; clients mirror per-RPC).
 var _bomb_at_sec: float = 0.0             # hidden; set in _run via compute_bomb_at
@@ -187,13 +188,8 @@ static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dic
 			var um = float(p_mods.get("underdog_multiplier", 1.0))
 			if um != 1.0:
 				chip_delta = int(chip_delta * um)
-			# Sub-project #6 Plan A: Leader Cursed reduces leader's survivor reward
-			if context != null:
-				var ht = context.house_twist
-				if ht.get("type", "") == "leader_cursed" and int(ht.get("params", {}).get("leader_peer_id", 0)) == pid:
-					var lc_mult = float(ht.get("params", {}).get("reward_multiplier", 1.0))
-					if lc_mult != 1.0:
-						chip_delta = int(chip_delta * lc_mult)
+			# Sub-project #7 Plan A Task 3: Leader Cursed via EventHelpers
+			chip_delta = EventHelpers.apply_leader_cursed(context, pid, chip_delta)
 			result.per_player[pid] = {
 				"chip_delta": chip_delta,
 				"crown_delta": 0,
@@ -238,22 +234,12 @@ static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dic
 		if winner_mods.get("heat_shield", false):
 			heat_delta = int(heat_delta / 2)
 		result.per_player[winner_peer_id]["heat_delta"] = heat_delta
-	# Sub-project #6 Plan B Task 8: Sudden Death Jackpot bonus crown.
-	# Each surviving puller whose pull-out timestamp >= 80% of bomb_at_sec
-	# earns +1 crown_delta. Stacks with the regular last-puller Crown.
-	# Sub-project #7: extract to EventHelpers.apply_sudden_death_bonus.
-	if context != null:
-		var ht = context.house_twist
-		if ht.get("type", "") == "sudden_death_jackpot" \
-				and String(ht.get("params", {}).get("condition", "")) == "pull_out_after_80_pct":
-			var threshold_ms = bomb_at_sec * 1000.0 * 0.80
-			for player in context.players:
-				var pid = player.peer_id
-				if not (pid in pulled_out_peers):
-					continue  # busts don't qualify
-				var ts = float(pull_out_timestamps.get(pid, 0))
-				if ts >= threshold_ms:
-					result.per_player[pid].crown_delta = int(result.per_player[pid].get("crown_delta", 0)) + 1
+	# Sub-project #7 Plan A Task 3: Sudden Death Jackpot via EventHelpers
+	var threshold_ms = bomb_at_sec * 1000.0 * 0.80
+	for player in context.players:
+		var pid = player.peer_id
+		var survives = (pid in pulled_out_peers) and float(pull_out_timestamps.get(pid, 0)) >= threshold_ms
+		EventHelpers.apply_sudden_death_bonus(context, pid, result.per_player, "pull_out_after_80_pct", survives)
 	result.painful_reveal = {
 		"bomb_at_sec": bomb_at_sec,
 		"winner_peer_id": winner_peer_id,
