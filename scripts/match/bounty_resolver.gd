@@ -62,12 +62,26 @@ static func resolve(state, result) -> Array:
 				claimant.chips += reward
 			awards.append({"claimant_peer_id": claimants[0], "bounty_dict": bounty.to_dict(), "reward_chips": reward})
 		else:
+			# Sub-project #7 Plan A Task 9: assign tie-split remainder
+			# to lowest-seat_index claimant for deterministic payout.
+			# Previously int(reward / claimants.size()) evaporated the
+			# modulo (e.g. 100/3 -> 99 paid, 1 lost).
 			var split = int(reward / claimants.size())
+			var remainder = reward - (split * claimants.size())
+			# Find the lowest seat_index among claimants
+			var bonus_recipient = claimants[0]
+			var bonus_seat = INF
 			for c_id in claimants:
 				var c = _find_player(state, c_id)
+				if c != null and c.seat_index < bonus_seat:
+					bonus_seat = c.seat_index
+					bonus_recipient = c_id
+			for c_id in claimants:
+				var c = _find_player(state, c_id)
+				var pay = split + (remainder if c_id == bonus_recipient else 0)
 				if c != null:
-					c.chips += split
-				awards.append({"claimant_peer_id": c_id, "bounty_dict": bounty.to_dict(), "reward_chips": split})
+					c.chips += pay
+				awards.append({"claimant_peer_id": c_id, "bounty_dict": bounty.to_dict(), "reward_chips": pay})
 	state.bounties = []
 	return awards
 
