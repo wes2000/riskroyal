@@ -364,6 +364,10 @@ func _process_ante_phase() -> void:
 	var ante = MatchConfig.ANTE_BY_EVENT_INDEX[state.event_index]
 	var deltas: Array = []
 	for p in state.players:
+		# Alpha feel remediation Phase A Change 1 (§5.4): clear the
+		# event-local bust flag so the player re-enters the new event
+		# without the BUSTED paint marker.
+		p.busted_this_event = false
 		if p.chips >= ante:
 			p.chips -= ante
 			p.is_active_this_event = true
@@ -889,9 +893,16 @@ func _build_busts_payload(result) -> Dictionary:
 			# (positive magnitude) for Announcer + PainfulReveal subscribers.
 			var loss = abs(int(result.per_player[pid].get("chip_delta", 0)))
 			player_busted.emit(pid, loss)
-			# Plan C Task 9: each peer evaluates if its OWN local player
-			# just busted. Only the affected peer's controller emits.
-			notify_local_spectator_if_busted(pid)
+			# Alpha feel remediation Phase A Change 1 (§5.4): mark the
+			# MatchPlayer record so status chips / overlays can show BUSTED
+			# for the remainder of this event. Reset in _process_ante_phase
+			# at the start of the next event.
+			# NOTE: notify_local_spectator_if_busted is intentionally NOT
+			# called here — event busts are event-local and must not trigger
+			# match-long spectator mode.
+			var p = state.find_player(pid)
+			if p != null:
+				p.busted_this_event = true
 	return {"bust_peer_ids": bust_ids}
 
 func _build_cash_outs_payload(result) -> Dictionary:

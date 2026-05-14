@@ -20,20 +20,24 @@ func _new_controller_with_local_peer(local_pid: int):
 		c.state.players.append(p)
 	return c
 
-func test_local_player_spectator_mode_entered_emits_busted_reason():
+# Alpha feel remediation Phase A Change 1: repurposed from the old
+# test_local_player_spectator_mode_entered_emits_busted_reason test.
+# The spectator signal is now only for disconnect/drop paths; event busts
+# no longer emit it. Verify the drop path still works.
+func test_local_player_spectator_mode_entered_emits_dropped_reason():
 	var c = _new_controller_with_local_peer(1)
 	var got: Array = []
 	c.local_player_spectator_mode_entered.connect(func(r): got.append(r))
-	# Call the new helper that evaluates + emits when local player busts.
-	c.notify_local_spectator_if_busted(1)
+	# Call the drop helper (disconnect path) — this still emits.
+	c.notify_local_spectator_if_dropped(1)
 	assert_eq(got.size(), 1)
-	assert_eq(String(got[0]), "busted")
+	assert_eq(String(got[0]), "dropped")
 
-func test_local_player_spectator_mode_entered_skips_remote_peer_bust():
+func test_local_player_spectator_mode_entered_skips_remote_peer_drop():
 	var c = _new_controller_with_local_peer(1)
 	var got: Array = []
 	c.local_player_spectator_mode_entered.connect(func(r): got.append(r))
-	# A remote peer (peer_id=2) busts — local peer is still active, so
+	# A remote peer (peer_id=2) drops — local peer is still active, so
 	# the signal must NOT fire on this controller instance.
-	c.notify_local_spectator_if_busted(2)
-	assert_eq(got.size(), 0, "remote bust doesn't emit on a non-affected peer")
+	c.notify_local_spectator_if_dropped(2)
+	assert_eq(got.size(), 0, "remote drop doesn't emit on a non-affected peer")

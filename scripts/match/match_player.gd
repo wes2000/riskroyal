@@ -11,6 +11,14 @@ var chips: int = 0
 var crowns: int = 0
 var heat: int = 0
 var is_active_this_event: bool = true
+# Alpha feel remediation Phase A Change 1 (§5.3): event-local bust flag.
+# Set when the player fails the current event; reset at the next ANTE phase.
+# Does NOT imply match-long spectator mode — that is reserved for disconnect
+# / hard-elimination paths tracked by `disconnected`.
+var busted_this_event: bool = false
+# Set when the peer has disconnected and will not return. Drives the
+# match-long spectator transition (notify_local_spectator_if_dropped).
+var disconnected: bool = false
 var hand: Array = []
 var loadout: Array = []
 var played_this_event: Array = []
@@ -25,6 +33,8 @@ func to_dict() -> Dictionary:
 		"crowns": crowns,
 		"heat": heat,
 		"is_active_this_event": is_active_this_event,
+		"busted_this_event": busted_this_event,
+		"disconnected": disconnected,
 		"hand": hand.duplicate(),
 		"loadout": loadout.duplicate(),
 		"played_this_event": played_this_event.duplicate(),
@@ -40,6 +50,8 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	p.crowns = d.get("crowns", 0)
 	p.heat = d.get("heat", 0)
 	p.is_active_this_event = d.get("is_active_this_event", true)
+	p.busted_this_event = d.get("busted_this_event", false)
+	p.disconnected = d.get("disconnected", false)
 	p.hand = d.get("hand", []).duplicate()
 	p.loadout = d.get("loadout", []).duplicate()
 	p.played_this_event = d.get("played_this_event", []).duplicate()
