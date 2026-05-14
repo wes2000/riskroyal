@@ -170,8 +170,9 @@ static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dic
 	result.event_id = "bomb_pot"
 	var summary: Array = []
 	var winner_peer_id = 0
-	var winner_pull_out_ms = -1
+	var winner_pull_out_ms: int = 0  # only meaningful when has_winner is true
 	var winner_seat = INF
+	var has_winner: bool = false
 	var modifiers = {}
 	if context != null:
 		modifiers = context.event_modifiers
@@ -203,12 +204,16 @@ static func compute_event_result(context, bomb_at_sec: float, locked_shares: Dic
 				"pull_out_ms": pull_out_timestamps.get(pid, 0),
 				"chip_delta": chip_delta, "busted": false, "wager": wager,
 			})
-			# Track latest puller (with seat_index tie-break)
+			# Track latest puller (with seat_index tie-break). has_winner
+			# flag makes the "no pullers => no Crown" invariant explicit and
+			# robust against future refactors that might decouple the
+			# `pid in pulled_out_peers` guard from this block.
 			var ts = int(pull_out_timestamps.get(pid, 0))
-			if ts > winner_pull_out_ms or (ts == winner_pull_out_ms and player.seat_index < winner_seat):
+			if not has_winner or ts > winner_pull_out_ms or (ts == winner_pull_out_ms and player.seat_index < winner_seat):
 				winner_pull_out_ms = ts
 				winner_peer_id = pid
 				winner_seat = player.seat_index
+				has_winner = true
 		else:
 			# Bust
 			var bust_loss = wager
