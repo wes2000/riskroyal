@@ -180,6 +180,21 @@ func _build_loadout_overlay() -> void:
 	_loadout_overlay.controller = controller
 	_loadout_overlay.local_player = _find_local_player()
 	_loadout_slot.add_child(_loadout_overlay)
+	_loadout_overlay.loadout_changed.connect(_on_loadout_changed)
+
+func _on_loadout_changed(slot_index: int, card_id: String) -> void:
+	var local = _find_local_player()
+	if local == null or controller == null:
+		return
+	var new_loadout = compute_loadout_from_drop(local.loadout, slot_index, card_id)
+	controller.submit_loadout_change(new_loadout)
+
+static func compute_loadout_from_drop(current_loadout: Array, slot_index: int, card_id: String) -> Array:
+	var out: Array = current_loadout.duplicate()
+	while out.size() <= slot_index:
+		out.append("")
+	out[slot_index] = card_id
+	return out
 
 func _build_shop_overlay() -> void:
 	if _shop_slot == null:
