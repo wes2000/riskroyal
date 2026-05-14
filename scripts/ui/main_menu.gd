@@ -6,6 +6,7 @@ extends Control
 const CliArgs = preload("res://scripts/util/cli_args.gd")
 const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 const PracticeSetupOverlayScene = preload("res://scenes/practice_setup.tscn")
+const PracticeSession = preload("res://scripts/net/practice_session.gd")
 
 var session  # NetSession-like; defaults to NetSessionMain.session
 
@@ -39,6 +40,8 @@ func _ready() -> void:
 		_on_host_pressed()
 	elif args.join_code != "":
 		_on_join_with_code(args.join_code)
+	elif args.practice_locally:
+		PracticeSession.start(args.practice_bots, args.practice_seed, get_tree())
 
 func _on_host_pressed() -> void:
 	session.host_session()

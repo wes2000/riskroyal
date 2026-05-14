@@ -44,7 +44,7 @@ const BotController = preload("res://scripts/match/bot_controller.gd")
 @onready var _status_grid_slot: Container = $VBox/StatusGridSlot if has_node("VBox/StatusGridSlot") else null
 @onready var _announcer_slot: Container = $VBox/AnnouncerSlot if has_node("VBox/AnnouncerSlot") else null
 @onready var _painful_reveal_slot: Container = $VBox/PainfulRevealSlot if has_node("VBox/PainfulRevealSlot") else null
-@onready var _spectator_slot: Container = $VBox/SpectatorSlot if has_node("VBox/SpectatorSlot") else null
+@onready var _spectator_slot: Control = $VBox/SpectatorSlot if has_node("VBox/SpectatorSlot") else null
 @onready var _settings_slot: Container = $SettingsSlot if has_node("SettingsSlot") else null
 @onready var _settings_button: Button = $SettingsButton if has_node("SettingsButton") else null
 @onready var _pause_overlay: PanelContainer = $PauseOverlay if has_node("PauseOverlay") else null
@@ -173,9 +173,18 @@ func _on_event_starting(event_id: String, _event_index: int) -> void:
 	_unload_current_event()
 	if _event_slot == null:
 		return
-	var ps = load(event_id)
+	# event_id is the bare event-name from EventNode.get_event_id()
+	# ("rocket_clash" / "bomb_pot" / "card_cannon"). The scene path lives
+	# on controller.state.current_event_id (the EVENT_POOL .tscn path).
+	var scene_path: String = ""
+	if controller != null and controller.state != null:
+		scene_path = controller.state.current_event_id
+	if scene_path == "":
+		push_warning("Failed to load event: %s (no scene path on state)" % event_id)
+		return
+	var ps = load(scene_path)
 	if ps == null:
-		push_warning("Failed to load event: %s" % event_id)
+		push_warning("Failed to load event scene: %s" % scene_path)
 		return
 	_current_event_scene = ps.instantiate()
 	_event_slot.add_child(_current_event_scene)

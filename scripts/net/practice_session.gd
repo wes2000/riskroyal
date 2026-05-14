@@ -66,4 +66,9 @@ static func start(bot_count: int, seed: int, tree: SceneTree) -> void:
 			nsm.session.local_peer_id = HUMAN_PEER_ID
 			nsm.session.is_host = true
 	if tree != null:
-		tree.change_scene_to_file("res://scenes/match_scene.tscn")
+		# Defer: this is typically called from inside a UI-button handler
+		# fired by a child node's _ready (CLI auto-fire path) or _pressed
+		# (manual path). Synchronous change_scene_to_file raises
+		# "parent busy" because the SceneTree is still adding the calling
+		# node's children. call_deferred runs after the current frame.
+		tree.change_scene_to_file.call_deferred("res://scenes/match_scene.tscn")
