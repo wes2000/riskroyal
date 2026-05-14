@@ -129,6 +129,9 @@ static func format_resolution_step(step_name: String, payload: Dictionary) -> St
 			# Alpha remediation Phase B Change 2: Bomb Pot event-specific reveal.
 			if payload.has("bomb_at_sec") and payload.has("pulls_summary"):
 				return format_painful_reveal_bomb_pot(payload)
+			# Alpha remediation Phase B Change 2: Card Cannon event-specific reveal.
+			if payload.has("winner_score") and payload.has("scores_summary"):
+				return format_painful_reveal_card_cannon(payload)
 			# Existing TestEvent fallback (winner_peer_id + optional winner_name only)
 			var winner_name = payload.get("winner_name", "")
 			var winner_pid = payload.get("winner_peer_id", 0)
@@ -198,6 +201,64 @@ static func format_painful_reveal_bomb_pot(payload: Dictionary) -> String:
 		var name = String(row.get("name", "P?"))
 		var delta = int(row.get("chip_delta", 0))
 		lines.append("  %s busted, still grabbing when it blew (%d chips)" % [name, delta])
+
+	return "\n".join(lines)
+
+# Alpha remediation Phase B Change 2: event-specific painful reveal for
+# Card Cannon. Spec §6.4 of the remediation design doc.
+static func format_painful_reveal_card_cannon(payload: Dictionary) -> String:
+	var winner_pid = int(payload.get("winner_peer_id", 0))
+	var winner_score = int(payload.get("winner_score", 0))
+	var scores: Array = payload.get("scores_summary", [])
+
+	var lines: Array = []
+	# Headline
+	var winner_name = ""
+	for row in scores:
+		if int(row.get("peer_id", 0)) == winner_pid:
+			winner_name = String(row.get("name", ""))
+			break
+	if winner_name != "" and winner_score > 0:
+		lines.append("CANNONS LOCKED! %s wins with %d" % [winner_name, winner_score])
+	else:
+		lines.append("CANNONS LOCKED! No winner — everyone overloaded")
+
+	# Winner row first with Crown call-out + 21-perfect call-out
+	for row in scores:
+		var pid = int(row.get("peer_id", 0))
+		if pid != winner_pid or bool(row.get("busted", false)):
+			continue
+		var name = String(row.get("name", "P?"))
+		var lscore = int(row.get("locked_score", 0))
+		var delta = int(row.get("chip_delta", 0))
+		var sign = "+" if delta >= 0 else ""
+		var crown_suffix = ", Crown"
+		if lscore == 21:
+			lines.append("  %s locked %d %s%d chips%s (PERFECT!)" % [name, lscore, sign, delta, crown_suffix])
+		else:
+			lines.append("  %s locked %d %s%d chips%s" % [name, lscore, sign, delta, crown_suffix])
+
+	# Other survivors (locked but not winner)
+	for row in scores:
+		var pid = int(row.get("peer_id", 0))
+		if pid == winner_pid:
+			continue
+		if bool(row.get("busted", false)):
+			continue
+		var name = String(row.get("name", "P?"))
+		var lscore = int(row.get("locked_score", 0))
+		var delta = int(row.get("chip_delta", 0))
+		var sign = "+" if delta >= 0 else ""
+		lines.append("  %s locked %d %s%d chips" % [name, lscore, sign, delta])
+
+	# Busted players
+	for row in scores:
+		if not bool(row.get("busted", false)):
+			continue
+		var name = String(row.get("name", "P?"))
+		var score = int(row.get("score", 0))
+		var delta = int(row.get("chip_delta", 0))
+		lines.append("  %s overloaded at %d (%d chips)" % [name, score, delta])
 
 	return "\n".join(lines)
 
