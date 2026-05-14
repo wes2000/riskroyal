@@ -15,6 +15,8 @@ func _ready() -> void:
 		player.name = cue
 		add_child(player)
 		_players[cue] = player
+	# Plan C Task 2: scan scripts/audio/sfx/ for user-provided overrides.
+	_scan_asset_slots()
 
 func play_chip_transfer() -> void:
 	_play("chip_transfer")
@@ -157,3 +159,31 @@ static func synth_params(cue_name: String) -> Dictionary:
 			}
 		_:
 			return {}
+
+static func expected_slot_filenames() -> Array[String]:
+	return ["chip_transfer.ogg", "bust.ogg", "crown_win.ogg", "match_end.ogg", "button_press.ogg", "twist_stinger.ogg"]
+
+static func cue_name_for_filename(filename: String) -> String:
+	if not filename.ends_with(".ogg"):
+		return ""
+	var stem = filename.substr(0, filename.length() - 4)
+	for known in ["chip_transfer", "bust", "crown_win", "match_end", "button_press", "twist_stinger"]:
+		if stem == known:
+			return stem
+	return ""
+
+func _scan_asset_slots() -> void:
+	var dir = DirAccess.open("res://scripts/audio/sfx")
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var fname = dir.get_next()
+	while fname != "":
+		if not dir.current_is_dir():
+			var cue = cue_name_for_filename(fname)
+			if cue != "" and _players.has(cue):
+				var stream = load("res://scripts/audio/sfx/%s" % fname)
+				if stream != null:
+					_players[cue].stream = stream
+		fname = dir.get_next()
+	dir.list_dir_end()
