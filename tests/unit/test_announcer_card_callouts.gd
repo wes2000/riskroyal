@@ -36,7 +36,8 @@ func test_generic_callout_for_other_cards():
 		["late_cash", "Alex", "", "Late Cash", "Alex played Late Cash."],
 		["double_or_nothing", "Sam", "", "Double or Nothing", "Sam played Double or Nothing."],
 		["underdog_odds", "Maya", "", "Underdog Odds", "Maya played Underdog Odds."],
-		["place_bounty", "Maya", "Sam", "Place Bounty", "Maya played Place Bounty."],
+		# place_bounty moved to its own arm in Phase G S1 (named-target
+		# callout). See test_announcer_bounty_callouts.gd.
 		["heat_shield", "Sam", "", "Heat Shield", "Sam played Heat Shield."],
 		["emergency_eject", "Jordan", "", "Emergency Eject", "Jordan played Emergency Eject."],
 	]:

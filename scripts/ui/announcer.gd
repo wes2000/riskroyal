@@ -191,9 +191,21 @@ static func format_card_callout(card_id: String, peer_name: String,
 			return "%s copied %s's wager." % [peer_name, target_name]
 		"heat_spike":
 			return "%s spiked %s's Heat." % [peer_name, target_name]
+		"place_bounty":
+			# Alpha remediation Phase G S1: Pillar #5 rivalry callout. The
+			# generic fallback dropped target_name even though place_bounty
+			# is target_required=true, which masked the "permission to attack
+			# friends" beat.
+			return "%s put a bounty on %s." % [peer_name, target_name]
 		_:
 			var name = card_display_name if card_display_name != "" else card_id
 			return "%s played %s." % [peer_name, name]
+
+# Alpha remediation Phase G S1: rivalry callout when a player-placed bounty
+# pays out. Spec §8.7 of the remediation design doc. Auto-placed (Leader /
+# Heat) bounties skip this callout — see _on_bounty_claimed.
+static func format_bounty_claimed_text(claimant_name: String, target_name: String) -> String:
+	return "%s claimed their bounty on %s." % [claimant_name, target_name]
 
 # Plan C Task 4: animation timeline durations exposed as a Dictionary
 # so unit tests can assert the stage lengths without running a real Tween.
