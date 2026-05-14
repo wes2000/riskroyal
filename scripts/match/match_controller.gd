@@ -260,6 +260,13 @@ func submit_event_pick(chosen_path: String) -> void:
 # so behavior is identical to a real RPC submission from `peer_id`.
 # Required for Practice mode bots that share the local peer.
 
+# Practice-mode helper: expose the currently-instantiated event node so
+# BotController can call event-specific host_submit_* methods (cash_out,
+# pull_out, draw, lock). Returns null between events.
+func get_current_event_node():
+	return _current_event_node
+
+
 func host_submit_wager(peer_id: int, amount: int) -> void:
 	if not is_host:
 		push_warning("host_submit_wager called on non-host")
