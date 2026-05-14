@@ -7,18 +7,94 @@ extends PanelContainer
 
 var controller  # MatchController-like
 
+# Alpha remediation Phase F §11.3: queued modifier notes from card plays
+# during BET_LOADOUT / MAIN_EVENT, flushed when the painful_reveal step
+# fires during RESOLUTION so spectators see "why" each diverging line
+# item happened. Cleared at HOUSE_REVEAL like the rest of the overlay.
+var _pending_modifier_notes: Array = []
+
 func _ready() -> void:
 	if controller == null:
 		return
 	controller.resolution_step.connect(_on_resolution_step)
 	controller.phase_changed.connect(_on_phase_changed)
+	# Alpha remediation Phase F §11.3: capture modifier card plays so
+	# the visual tag can be appended at painful_reveal time. Guarded by
+	# has_signal so test harnesses without the signal don't trip.
+	if controller.has_signal("card_effect_applied"):
+		controller.card_effect_applied.connect(_on_card_effect_applied)
 
 func _on_phase_changed(phase: int) -> void:
 	var MatchPhase = load("res://scripts/match/match_phase.gd")
 	if phase == MatchPhase.Phase.HOUSE_REVEAL:
 		_clear_lines()
+		_pending_modifier_notes.clear()
+
+func _on_card_effect_applied(peer_id: int, card_id: String, effect_result: Dictionary) -> void:
+	# Alpha remediation Phase F §11.3: only the 4 modifier cards generate
+	# a visual tag at resolution. Build the note payload from controller
+	# state + the effect_result Dictionary so the static formatter stays
+	# pure (testable without a live overlay).
+	if not _is_modifier_note_card(card_id):
+		return
+	var note_payload = _build_modifier_note_payload(peer_id, card_id, effect_result)
+	var note = format_modifier_note(card_id, note_payload)
+	if note != "":
+		_pending_modifier_notes.append(note)
+
+# Pure dispatch table so the resolution-step path can ask "should I look
+# at this card?" without duplicating the match statement in
+# format_modifier_note.
+func _is_modifier_note_card(card_id: String) -> bool:
+	return card_id in ["insurance", "wager_tax", "multiplier_booster", "cash_out_jammer"]
+
+# Resolves names + numeric fields from controller.state + effect_result.
+# Caller (_on_card_effect_applied) guarantees card_id is one of the four
+# modifier cards.
+func _build_modifier_note_payload(peer_id: int, card_id: String,
+		effect_result: Dictionary) -> Dictionary:
+	var payload: Dictionary = {}
+	match card_id:
+		"insurance":
+			payload["target_name"] = _name_for(peer_id)
+			# Refund amount is computed at resolution; absent from effect_result.
+			# Live overlay reads it from the chip_changes step where possible
+			# (deferred — overlay flushes the note with refund_amount = 0 today,
+			# producing "Insurance saved <Name> 0 chips" which is intentionally
+			# truthful when no bust occurred).
+			payload["refund_amount"] = int(effect_result.get("refund_amount", 0))
+		"wager_tax":
+			payload["source_name"] = _name_for(int(effect_result.get("source", 0)))
+			payload["target_name"] = _name_for(int(effect_result.get("target", 0)))
+			payload["tax_amount"] = int(effect_result.get("tax_amount", 0))
+		"multiplier_booster":
+			payload["target_name"] = _name_for(peer_id)
+			payload["multiplier"] = float(effect_result.get("multiplier", 1.0))
+		"cash_out_jammer":
+			payload["source_name"] = _name_for(int(effect_result.get("source", 0)))
+			payload["target_name"] = _name_for(int(effect_result.get("target", 0)))
+			payload["delay_ms"] = int(effect_result.get("delay_ms", 0))
+	return payload
+
+func _name_for(peer_id: int) -> String:
+	if controller == null or controller.state == null:
+		return "P%d" % peer_id
+	var p = controller.state.find_player(peer_id)
+	if p == null:
+		return "P%d" % peer_id
+	return String(p.name)
+
+func _flush_modifier_notes() -> void:
+	for note in _pending_modifier_notes:
+		_append_line(note)
+	_pending_modifier_notes.clear()
 
 func _on_resolution_step(step_name: String, payload: Dictionary) -> void:
+	# Alpha remediation Phase F §11.3: flush the modifier notes captured
+	# during BET_LOADOUT / MAIN_EVENT at the painful reveal so spectators
+	# read the "why" alongside the cash-out / chip outcome.
+	if step_name == "painful_reveal":
+		_flush_modifier_notes()
 	# Plan C Task 7: crown_awards step with delta >= 2 renders as a
 	# structured sequenced animation instead of a static string.
 	if step_name == "crown_awards":
@@ -87,6 +163,39 @@ func _append_line(text: String) -> void:
 	_lines.add_child(label)
 
 # Static formatter (testable)
+
+# Alpha remediation Phase F §11.3: composes the visual tag for one of the
+# four modifier cards. Returns "" for any other card_id so the overlay
+# can short-circuit. Spec doesn't pin literal copy; these strings are
+# pinned by test_resolution_overlay_card_modifier_notes.gd so future
+# edits land deliberately.
+static func format_modifier_note(card_id: String, payload: Dictionary) -> String:
+	match card_id:
+		"insurance":
+			return "Insurance saved %s %d chips" % [
+				String(payload.get("target_name", "")),
+				int(payload.get("refund_amount", 0)),
+			]
+		"wager_tax":
+			return "Wager Tax: %s lost %d chips to %s" % [
+				String(payload.get("target_name", "")),
+				int(payload.get("tax_amount", 0)),
+				String(payload.get("source_name", "")),
+			]
+		"multiplier_booster":
+			var pct = int(round((float(payload.get("multiplier", 1.0)) - 1.0) * 100.0))
+			return "%s's multiplier boosted (+%d%%)" % [
+				String(payload.get("target_name", "")),
+				pct,
+			]
+		"cash_out_jammer":
+			return "Cash-out delayed: %s held %s for %dms" % [
+				String(payload.get("source_name", "")),
+				String(payload.get("target_name", "")),
+				int(payload.get("delay_ms", 0)),
+			]
+		_:
+			return ""
 
 static func format_resolution_step(step_name: String, payload: Dictionary) -> String:
 	match step_name:
