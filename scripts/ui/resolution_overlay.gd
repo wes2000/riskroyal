@@ -67,7 +67,7 @@ static func format_resolution_step(step_name: String, payload: Dictionary) -> St
 				return "No Crown awarded."
 			var parts: Array = []
 			for d in deltas:
-				parts.append("P%d gets %d Crown" % [int(d.get("peer_id", 0)), int(d.get("delta", 0))])
+				parts.append(_format_crown_award_entry(int(d.get("peer_id", 0)), int(d.get("delta", 0))))
 			return "Crowns: %s" % ", ".join(parts)
 		"painful_reveal":
 			# Rocket Clash extended payload (also fits future events that follow
@@ -82,6 +82,13 @@ static func format_resolution_step(step_name: String, payload: Dictionary) -> St
 			return "Painful reveal: P%d wins." % winner_pid
 		_:
 			return "(%s)" % step_name
+
+# Sub-project #7 Plan B Task 5: crown_delta=2 renders prominently.
+# Only happens when Sudden Death Jackpot stacks with the regular Crown.
+static func _format_crown_award_entry(peer_id: int, delta: int) -> String:
+	if delta >= 2:
+		return "P%d gets 👑👑 %d CROWNS (Sudden Death stack!)" % [peer_id, delta]
+	return "P%d gets %d Crown" % [peer_id, delta]
 
 static func _format_painful_reveal_rocket(payload: Dictionary) -> String:
 	var lines: Array = []
