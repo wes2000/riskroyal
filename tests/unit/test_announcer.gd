@@ -26,3 +26,11 @@ func test_format_match_outcome_text():
 	var s = Announcer.format_match_outcome_text(1, "P1")
 	assert_string_contains(s, "P1")
 	assert_string_contains(s, "WINS")
+
+func test_format_bust_text_has_color_blind_icon_prefix():
+	var s = Announcer.format_bust_text("P2", 100)
+	assert_string_contains(s, "✗", "bust message has X-mark icon for color-blind cue")
+
+func test_format_crown_text_has_color_blind_icon_prefix():
+	var s = Announcer.format_crown_text("P3", 1)
+	assert_string_contains(s, "👑", "crown message has crown icon for color-blind cue")

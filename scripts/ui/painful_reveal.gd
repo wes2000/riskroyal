@@ -97,10 +97,10 @@ func set_compact(compact: bool) -> void:
 # Static formatters (testable without scene)
 
 static func format_bust_reveal(peer_name: String, chip_loss: int) -> String:
-	return "%s LOST $%d" % [peer_name, chip_loss]
+	return "✗ %s LOST $%d ↓" % [peer_name, chip_loss]
 
 static func format_crown_reveal(peer_name: String, count: int) -> String:
-	return "%s +%d CROWN" % [peer_name, count]
+	return "👑 %s +%d CROWN" % [peer_name, count]
 
 static func crown_animation_timeline() -> Dictionary:
 	return {

@@ -120,12 +120,12 @@ static func format_twist_text(twist_dict: Dictionary) -> String:
 	return "HOUSE TWIST: %s!" % title
 
 static func format_bust_text(peer_name: String, chip_loss: int) -> String:
-	return "%s EJECTED! -%d chips" % [peer_name, chip_loss]
+	return "✗ %s EJECTED! -%d chips" % [peer_name, chip_loss]
 
 static func format_crown_text(peer_name: String, crown_count: int) -> String:
 	if crown_count >= 2:
-		return "%s WINS %d CROWNS!" % [peer_name, crown_count]
-	return "%s WINS THE CROWN!" % peer_name
+		return "👑 %s WINS %d CROWNS!" % [peer_name, crown_count]
+	return "👑 %s WINS THE CROWN!" % peer_name
 
 static func format_match_outcome_text(_winner_peer_id: int, winner_name: String) -> String:
 	return "%s WINS THE MATCH!" % winner_name
