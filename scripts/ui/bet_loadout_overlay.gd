@@ -11,15 +11,23 @@ const MatchConfig = preload("res://scripts/match/match_config.gd")
 @onready var _wager_spin: SpinBox = $VBox/WagerSpin if has_node("VBox/WagerSpin") else null
 @onready var _ready_button: Button = $VBox/ReadyButton if has_node("VBox/ReadyButton") else null
 @onready var _summary_label: Label = $VBox/SummaryLabel if has_node("VBox/SummaryLabel") else null
+@onready var _countdown_label: Label = $VBox/CountdownLabel if has_node("VBox/CountdownLabel") else null
+@onready var _readied_row: HBoxContainer = $VBox/ReadiedRow if has_node("VBox/ReadiedRow") else null
 
 var controller  # MatchController-like (set by MatchScene)
 var local_player  # MatchPlayer-like
+
+var _readied: Array = []
 
 func _ready() -> void:
 	visible = false
 	if controller != null:
 		controller.bet_loadout_started.connect(_on_started)
 		controller.bet_loadout_finished.connect(_on_finished)
+		if controller.has_signal("bet_loadout_timer_tick"):
+			controller.bet_loadout_timer_tick.connect(_on_timer_tick)
+		if controller.has_signal("wager_acknowledged"):
+			controller.wager_acknowledged.connect(_on_wager_acknowledged)
 	if _ready_button != null:
 		_ready_button.pressed.connect(_on_ready_pressed)
 	if _wager_slider != null and _wager_spin != null:
@@ -27,6 +35,7 @@ func _ready() -> void:
 		_wager_spin.value_changed.connect(_on_spin_changed)
 
 func _on_started(_active_peer_ids: Array, max_per_player: int) -> void:
+	_readied = []
 	visible = true
 	if local_player != null:
 		if _wager_slider != null:
@@ -66,6 +75,27 @@ func _refresh_summary() -> void:
 	var amount = int(_wager_slider.value) if _wager_slider != null else 0
 	_summary_label.text = format_wager_summary(local_player.chips, amount)
 
+func _on_timer_tick(seconds_remaining: int) -> void:
+	if _countdown_label != null:
+		_countdown_label.text = format_countdown(seconds_remaining)
+
+func _on_wager_acknowledged(peer_id: int, _amount: int) -> void:
+	if not (peer_id in _readied):
+		_readied.append(peer_id)
+	_rebuild_readied_row()
+
+func _rebuild_readied_row() -> void:
+	if _readied_row == null:
+		return
+	for child in _readied_row.get_children():
+		child.queue_free()
+	if controller == null or controller.state == null:
+		return
+	for p in controller.state.players:
+		var lbl = Label.new()
+		lbl.text = format_readied_chip(p.peer_id, _readied)
+		_readied_row.add_child(lbl)
+
 # Static formatters (testable)
 static func format_wager_summary(chips: int, wager: int) -> String:
 	return "Wager: %d (Chips: %d)" % [wager, chips]
@@ -73,3 +103,13 @@ static func format_wager_summary(chips: int, wager: int) -> String:
 static func clamp_wager(amount: int, chips: int, max_factor: float) -> int:
 	var cap = int(chips * max_factor)
 	return clamp(amount, 0, cap)
+
+static func format_countdown(seconds_remaining: int) -> String:
+	if seconds_remaining <= 0:
+		return ""
+	return "[%ds]" % seconds_remaining
+
+static func format_readied_chip(peer_id: int, readied_peer_ids: Array) -> String:
+	if peer_id in readied_peer_ids:
+		return "✓ P%d" % peer_id
+	return "P%d" % peer_id
