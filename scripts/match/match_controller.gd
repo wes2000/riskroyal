@@ -36,8 +36,12 @@ signal shop_closed
 signal shop_purchase_confirmed(peer_id: int, card_id: String, cost_chips: int)
 signal shop_purchase_rejected(peer_id: int, card_id: String, reason: String)
 signal house_twist_announced(twist_dict: Dictionary)
+signal player_busted(peer_id: int, chip_loss: int)
+signal crown_awarded(peer_id: int, count: int)
 signal event_picker_started(picker_peer_id: int, options: Array)
 signal event_picker_resolved(chosen_path: String, reason: String)
+signal status_changed(peer_id: int, status_string: String)
+signal bet_loadout_timer_tick(seconds_remaining: int)
 
 var state: MatchState
 var is_host: bool = false
@@ -228,6 +232,12 @@ func _rpc_set_wager(peer_id: int, amount: int) -> void:
 func _rpc_wager_acknowledged(_peer_id: int, _amount: int) -> void:
 	# Re-emits a local signal for BetLoadoutOverlay to update readied state.
 	wager_acknowledged.emit(_peer_id, _amount)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_bet_loadout_timer_tick(seconds_remaining: int) -> void:
+	# Sub-project #7 Plan B Task 3: client mirror of per-second countdown
+	# tick so BetLoadoutOverlay on non-host peers shows the countdown label.
+	bet_loadout_timer_tick.emit(seconds_remaining)
 
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_loadout_set(peer_id: int, loadout: Array) -> void:
@@ -430,10 +440,20 @@ func _process_bet_loadout() -> void:
 		# Detached controller: no SceneTree to create timer.
 		bet_loadout_finished.emit()
 		return
+	# Sub-project #7 Plan B Task 3: per-second tick emission so the
+	# overlay can render a countdown label. Early-exit via _all_active_ready()
+	# is preserved. Ticks are broadcast to clients via RPC since
+	# _process_bet_loadout is host-only.
 	var timer = get_tree().create_timer(timeout_sec)
+	var last_tick_emitted: int = -1
 	while timer.time_left > 0.0:
 		if _all_active_ready(active_peer_ids):
 			break
+		var seconds_remaining = int(ceil(timer.time_left))
+		if seconds_remaining != last_tick_emitted:
+			bet_loadout_timer_tick.emit(seconds_remaining)
+			_send_rpc("_rpc_bet_loadout_timer_tick", [seconds_remaining])
+			last_tick_emitted = seconds_remaining
 		await get_tree().process_frame
 	bet_loadout_finished.emit()
 
@@ -650,6 +670,12 @@ func _build_event_context():
 	ctx.rng_seed = state.rng_seed ^ (state.event_index * 0x9E3779B9)
 	ctx.is_host = is_host
 	ctx.host_peer_id = host_peer_id
+	# Sub-project #7 Plan B C1 fixup: controller reference so event nodes
+	# can route _rpc_status_changed (declared on this class) via the host
+	# controller. Without this, EventNode._send_rpc would dispatch the RPC
+	# to the event's own _multiplayer_node (== self), which has no such
+	# method — StatusGrid would receive zero updates in production.
+	ctx.controller = self
 	if not state.pending_wagers.is_empty():
 		for p in ctx.players:
 			ctx.wagers[p.peer_id] = state.pending_wagers.get(p.peer_id, 0)
@@ -822,6 +848,10 @@ func _build_busts_payload(result) -> Dictionary:
 	for pid in result.per_player.keys():
 		if result.bust_for(pid):
 			bust_ids.append(pid)
+			# Sub-project #7 Plan B Task 7: emit player_busted with chip_loss
+			# (positive magnitude) for Announcer + PainfulReveal subscribers.
+			var loss = abs(int(result.per_player[pid].get("chip_delta", 0)))
+			player_busted.emit(pid, loss)
 	return {"bust_peer_ids": bust_ids}
 
 func _build_cash_outs_payload(result) -> Dictionary:
@@ -848,6 +878,10 @@ func _apply_and_emit(step_name: String, result, delta_key: String) -> void:
 			"crown_delta":
 				p.crowns += d
 				broadcast_deltas.append({"peer_id": pid, "chip_delta": 0, "crown_delta": d, "heat_delta": 0})
+				# Sub-project #7 Plan B Task 7: visual trigger for Announcer
+				# + PainfulReveal. d is the crown_delta for this resolution
+				# step (1 for plain Crown, 2 for Sudden Death stack).
+				crown_awarded.emit(pid, d)
 		deltas.append({"peer_id": pid, "delta": d})
 		player_resources_changed.emit(pid)
 	_emit_resolution_step(step_name, {"deltas": deltas})
@@ -1103,3 +1137,12 @@ func _rpc_bounty_claimed(claimant_peer_id: int, bounty_dict: Dictionary, reward_
 @rpc("authority", "call_remote", "reliable")
 func _rpc_bounty_unclaimed(bounty_dict: Dictionary) -> void:
 	bounty_unclaimed.emit(bounty_dict)
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_status_changed(peer_id: int, status_string: String) -> void:
+	# Sub-project #7 Plan B Task 2 + C1 fixup: per-event status broadcast.
+	# call_remote — the host does NOT receive its own broadcast; instead
+	# EventNode._emit_status_changed emits status_changed.emit directly on
+	# the controller host-side, then broadcasts via _send_rpc to clients.
+	# This avoids double-emit on the host while still updating clients.
+	status_changed.emit(peer_id, status_string)

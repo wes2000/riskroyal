@@ -3,6 +3,8 @@
 # peers see a passive waiting banner. Hides on event_picker_resolved.
 extends PanelContainer
 
+const MatchConfig = preload("res://scripts/match/match_config.gd")
+
 @onready var _picker_row: HBoxContainer = $VBox/PickerRow if has_node("VBox/PickerRow") else null
 @onready var _waiting_label: Label = $VBox/WaitingLabel if has_node("VBox/WaitingLabel") else null
 @onready var _countdown_label: Label = $VBox/CountdownLabel if has_node("VBox/CountdownLabel") else null
@@ -12,6 +14,9 @@ var local_player  # MatchPlayer-like (has peer_id)
 var _is_picker: bool = false
 var _options: Array = []
 var _picker_peer_id: int = 0
+
+var _deadline_ms: int = 0
+var _active: bool = false
 
 func _ready() -> void:
 	visible = false
@@ -27,10 +32,25 @@ func _on_event_picker_started(picker_peer_id: int, options: Array) -> void:
 	_rebuild_buttons()
 	_refresh_waiting_label()
 	visible = true
+	# Sub-project #7 Plan B Task 4: start countdown.
+	_deadline_ms = Time.get_ticks_msec() + int(MatchConfig.EVENT_PICKER_TIMEOUT_SEC) * 1000
+	_active = true
+	set_process(true)
 
 func _on_event_picker_resolved(_chosen_path: String, _reason: String) -> void:
 	visible = false
 	_options = []
+	_active = false
+	set_process(false)
+	if _countdown_label != null:
+		_countdown_label.text = ""
+
+func _process(_delta: float) -> void:
+	if not _active or _countdown_label == null:
+		return
+	var remaining_ms = max(0, _deadline_ms - Time.get_ticks_msec())
+	var remaining_sec = int(ceil(remaining_ms / 1000.0))
+	_countdown_label.text = format_countdown(remaining_sec)
 
 func _rebuild_buttons() -> void:
 	if _picker_row == null:
@@ -89,3 +109,8 @@ static func format_waiting_banner(picker_name: String) -> String:
 	if picker_name.is_empty():
 		return "Waiting for the picker to choose..."
 	return "Waiting for %s to pick the next event..." % picker_name
+
+static func format_countdown(seconds_remaining: int) -> String:
+	if seconds_remaining <= 0:
+		return ""
+	return "[%ds]" % seconds_remaining

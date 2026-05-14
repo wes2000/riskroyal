@@ -16,8 +16,12 @@ const LoadoutOverlayScene = preload("res://scenes/ui/loadout_overlay.tscn")
 const ShopOverlayScene = preload("res://scenes/ui/shop_overlay.tscn")
 const BountyPanelScene = preload("res://scenes/ui/bounty_panel.tscn")
 const CashOutCardDrawerScene = preload("res://scenes/ui/cash_out_card_drawer.tscn")
+const CashOutCardDrawerTargetPickerScene = preload("res://scenes/ui/cash_out_card_drawer_target_picker.tscn")
 const HouseTwistOverlayScene = preload("res://scenes/ui/house_twist_overlay.tscn")
 const EventPickerOverlayScene = preload("res://scenes/ui/event_picker_overlay.tscn")
+const StatusGridScene = preload("res://scenes/ui/status_grid.tscn")
+const AnnouncerScene = preload("res://scenes/ui/announcer.tscn")
+const PainfulRevealScene = preload("res://scenes/ui/painful_reveal.tscn")
 const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 
 @onready var _player_panels: HBoxContainer = $VBox/PlayerPanels if has_node("VBox/PlayerPanels") else null
@@ -32,6 +36,10 @@ const NetSessionState = preload("res://scripts/data/net_session_state.gd")
 @onready var _house_twist_slot: Container = $VBox/HouseTwistSlot if has_node("VBox/HouseTwistSlot") else null
 @onready var _event_picker_slot: Container = $VBox/EventPickerSlot if has_node("VBox/EventPickerSlot") else null
 @onready var _cash_out_slot: Container = $VBox/CashOutSlot if has_node("VBox/CashOutSlot") else null
+@onready var _target_picker_slot: Container = $VBox/TargetPickerSlot if has_node("VBox/TargetPickerSlot") else null
+@onready var _status_grid_slot: Container = $VBox/StatusGridSlot if has_node("VBox/StatusGridSlot") else null
+@onready var _announcer_slot: Container = $VBox/AnnouncerSlot if has_node("VBox/AnnouncerSlot") else null
+@onready var _painful_reveal_slot: Container = $VBox/PainfulRevealSlot if has_node("VBox/PainfulRevealSlot") else null
 @onready var _pause_overlay: PanelContainer = $PauseOverlay if has_node("PauseOverlay") else null
 
 var session  # NetSession-like
@@ -44,6 +52,10 @@ var _bounty_panel: Node = null
 var _cash_out_drawer: Node = null
 var _house_twist_overlay: Node = null
 var _event_picker_overlay: Node = null
+var _target_picker: Node = null
+var _status_grid: Node = null
+var _announcer: Node = null
+var _painful_reveal: Node = null
 
 func _ready() -> void:
 	if session == null and get_tree().root.has_node("NetSessionMain"):
@@ -70,8 +82,16 @@ func _ready() -> void:
 	_build_shop_overlay()
 	_build_bounty_panel()
 	_build_cash_out_drawer()
+	_build_target_picker()
 	_build_house_twist_overlay()
 	_build_event_picker_overlay()
+	# Sub-project #7 Plan B C2 fixup: previously these three Plan B widgets
+	# had no MatchScene wiring — they were orphaned (compiled but never
+	# appeared in production). Slots were added in match_scene.tscn and
+	# builders mirror the existing overlay-builder pattern.
+	_build_status_grid()
+	_build_announcer()
+	_build_painful_reveal()
 	if session.is_host:
 		controller.start_match(match_start)
 
@@ -180,6 +200,21 @@ func _build_loadout_overlay() -> void:
 	_loadout_overlay.controller = controller
 	_loadout_overlay.local_player = _find_local_player()
 	_loadout_slot.add_child(_loadout_overlay)
+	_loadout_overlay.loadout_changed.connect(_on_loadout_changed)
+
+func _on_loadout_changed(slot_index: int, card_id: String) -> void:
+	var local = _find_local_player()
+	if local == null or controller == null:
+		return
+	var new_loadout = compute_loadout_from_drop(local.loadout, slot_index, card_id)
+	controller.submit_loadout_change(new_loadout)
+
+static func compute_loadout_from_drop(current_loadout: Array, slot_index: int, card_id: String) -> Array:
+	var out: Array = current_loadout.duplicate()
+	while out.size() <= slot_index:
+		out.append("")
+	out[slot_index] = card_id
+	return out
 
 func _build_shop_overlay() -> void:
 	if _shop_slot == null:
@@ -203,6 +238,25 @@ func _build_cash_out_drawer() -> void:
 	_cash_out_drawer.controller = controller
 	_cash_out_drawer.local_player = _find_local_player()
 	_cash_out_slot.add_child(_cash_out_drawer)
+	_cash_out_drawer.target_required_card_pressed.connect(_on_target_required_card_pressed)
+
+func _build_target_picker() -> void:
+	if _target_picker_slot == null:
+		return
+	_target_picker = CashOutCardDrawerTargetPickerScene.instantiate()
+	_target_picker.controller = controller
+	var local = _find_local_player()
+	if local != null:
+		_target_picker.local_peer_id = local.peer_id
+	_target_picker_slot.add_child(_target_picker)
+
+func _on_target_required_card_pressed(card_id: String) -> void:
+	if _target_picker == null or controller == null:
+		return
+	var players: Array = []
+	if controller.state != null:
+		players = controller.state.players
+	_target_picker.open_for_card(card_id, players)
 
 func _build_house_twist_overlay() -> void:
 	if _house_twist_slot == null:
@@ -221,6 +275,27 @@ func _build_event_picker_overlay() -> void:
 	_event_picker_overlay.controller = controller
 	_event_picker_overlay.local_player = _find_local_player()
 	_event_picker_slot.add_child(_event_picker_overlay)
+
+func _build_status_grid() -> void:
+	if _status_grid_slot == null:
+		return
+	_status_grid = StatusGridScene.instantiate()
+	_status_grid.controller = controller
+	_status_grid_slot.add_child(_status_grid)
+
+func _build_announcer() -> void:
+	if _announcer_slot == null:
+		return
+	_announcer = AnnouncerScene.instantiate()
+	_announcer.controller = controller
+	_announcer_slot.add_child(_announcer)
+
+func _build_painful_reveal() -> void:
+	if _painful_reveal_slot == null:
+		return
+	_painful_reveal = PainfulRevealScene.instantiate()
+	_painful_reveal.controller = controller
+	_painful_reveal_slot.add_child(_painful_reveal)
 
 # Static formatter (testable). Takes total_events as a parameter so the
 # caller chooses the count (production passes MatchConfig.QUICK_CLASH_EVENT_COUNT).

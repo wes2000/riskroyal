@@ -111,6 +111,7 @@ func _rpc_draw_requested(peer_id: int) -> void:
 	var is_busted = new_score > 21
 	if is_busted:
 		_busted[peer_id] = true
+		_emit_status_changed(_stashed_context, peer_id, "BUSTED")
 	_send_rpc("_rpc_card_drawn", [peer_id, rank, new_score, is_busted])
 	if _all_active_settled():
 		_finish()
@@ -136,6 +137,7 @@ func _rpc_lock_requested(peer_id: int) -> void:
 	if not (peer_id in _active_peers):
 		return
 	_locked_scores[peer_id] = _scores.get(peer_id, 0)
+	_emit_status_changed(_stashed_context, peer_id, "LOCKED")
 	_send_rpc("_rpc_locked", [peer_id, _locked_scores[peer_id]])
 	if _all_active_settled():
 		_finish()

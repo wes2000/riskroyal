@@ -4,6 +4,8 @@
 # and phase_changed (visibility toggle).
 extends PanelContainer
 
+signal target_required_card_pressed(card_id: String)
+
 const CardRegistry = preload("res://scripts/cards/card_registry.gd")
 
 @onready var _row: HBoxContainer = $VBox/CardRow if has_node("VBox/CardRow") else null
@@ -47,8 +49,12 @@ func _refresh() -> void:
 func _on_card_pressed(card_id: String) -> void:
 	if controller == null:
 		return
-	# MVP: target_peer_id = 0 means UI defers to host's target_required reject.
-	# Full target picker UI is a polish-pass item.
+	var card = CardRegistry.get_card(card_id)
+	if card.get("target_required", false):
+		# Sub-project #7 Plan B Task 11: defer to MatchScene's target
+		# picker modal. MatchScene wires this signal to open the picker.
+		target_required_card_pressed.emit(card_id)
+		return
 	controller.submit_card_play(card_id, 0, null)
 
 # Static formatter (testable). Returns cash_out-timing cards from loadout

@@ -95,6 +95,7 @@ func _rpc_pull_out_requested(peer_id: int) -> void:
 	_locked_shares[peer_id] = int(_shares_accumulator.get(peer_id, 0.0))
 	_pull_out_timestamps[peer_id] = elapsed_ms
 	_pulled_out_peers.append(peer_id)
+	_emit_status_changed(_stashed_context, peer_id, "PULLED")
 	_send_rpc("_rpc_pull_out_confirmed", [peer_id, _locked_shares[peer_id], elapsed_ms])
 
 @rpc("authority", "call_remote", "reliable")
@@ -141,6 +142,9 @@ func _finish() -> void:
 		return
 	_finished = true
 	set_process(false)
+	for pid in _active_peers:
+		if not (pid in _pulled_out_peers):
+			_emit_status_changed(_stashed_context, pid, "BUSTED")
 	var result = compute_event_result(_stashed_context, _bomb_at_sec, _locked_shares, _pulled_out_peers, _pull_out_timestamps)
 	event_complete.emit(result)
 

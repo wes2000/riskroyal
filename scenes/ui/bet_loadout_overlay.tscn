@@ -25,3 +25,8 @@ text = "Ready"
 
 [node name="SummaryLabel" type="Label" parent="VBox"]
 text = "Wager: 0 (Chips: 0)"
+
+[node name="CountdownLabel" type="Label" parent="VBox"]
+text = ""
+
+[node name="ReadiedRow" type="HBoxContainer" parent="VBox"]
