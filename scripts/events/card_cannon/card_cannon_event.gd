@@ -303,6 +303,60 @@ static func compute_event_result(context, hands: Dictionary, locked_scores: Dict
 		var pid = player.peer_id
 		var survives = not busted.get(pid, false) and int(locked_scores.get(pid, 0)) == 21
 		EventHelpers.apply_sudden_death_bonus(context, pid, result.per_player, "locked_at_perfect", survives)
+	# Alpha remediation Phase D Change 5 Task D.2 (§9.3): locked-score
+	# chip attacks. Each non-busted shooter fires at their resolved
+	# target. Attack scales with locked score per §9.3. Folded into
+	# chip_delta (Approach A per §9.4). Bonus per-player keys for the
+	# reveal: target_peer_id, attack_delta (shooter), incoming_attack
+	# (target). Perfect 21 also adds +1 bonus Heat on the shooter.
+	var attack_table = {
+		21: 100,   # perfect
+		20: 75, 19: 75,
+		18: 50, 17: 50, 16: 50,
+		15: 25, 14: 25, 13: 25, 12: 25, 11: 25,
+	}
+	for player in context.players:
+		var shooter_pid = int(player.peer_id)
+		if busted.get(shooter_pid, false):
+			continue  # busted shooters don't fire
+		var lscore = int(locked_scores.get(shooter_pid, 0))
+		if lscore <= 10:
+			# No attack tier — store 0 attack_delta for the reveal.
+			result.per_player[shooter_pid]["target_peer_id"] = 0
+			result.per_player[shooter_pid]["attack_delta"] = 0
+			continue
+		var target_pid = resolve_target_peer_id(context, shooter_pid)
+		if target_pid == 0:
+			result.per_player[shooter_pid]["target_peer_id"] = 0
+			result.per_player[shooter_pid]["attack_delta"] = 0
+			continue
+		var atk = int(attack_table.get(lscore, 25))
+		# Bonus heat for perfect 21 (§9.3): +1 bonus Heat on shooter.
+		if lscore == 21:
+			result.per_player[shooter_pid]["heat_delta"] = int(result.per_player[shooter_pid].get("heat_delta", 0)) + 1
+		# Fold attack into shooter's chip_delta (positive).
+		result.per_player[shooter_pid]["chip_delta"] = int(result.per_player[shooter_pid].get("chip_delta", 0)) + atk
+		# Fold attack into target's chip_delta (negative). Ensure the
+		# target has a per_player entry — busted targets are populated
+		# in the main loop already, but defensive init keeps this safe.
+		if not result.per_player.has(target_pid):
+			result.per_player[target_pid] = {
+				"chip_delta": 0, "crown_delta": 0, "heat_delta": 0,
+				"bust": false, "cash_out_at": 0.0,
+			}
+		result.per_player[target_pid]["chip_delta"] = int(result.per_player[target_pid].get("chip_delta", 0)) - atk
+		result.per_player[target_pid]["incoming_attack"] = int(result.per_player[target_pid].get("incoming_attack", 0)) + atk
+		# Reveal fields on the shooter.
+		result.per_player[shooter_pid]["target_peer_id"] = target_pid
+		result.per_player[shooter_pid]["attack_delta"] = atk
+	# Patch the scores_summary rows so the reveal sees the post-attack
+	# chip_delta + the new combat fields (target_peer_id, attack_delta).
+	for row in summary:
+		var pid = int(row.get("peer_id", 0))
+		var entry = result.per_player.get(pid, {})
+		row["chip_delta"] = int(entry.get("chip_delta", row.get("chip_delta", 0)))
+		row["target_peer_id"] = int(entry.get("target_peer_id", 0))
+		row["attack_delta"] = int(entry.get("attack_delta", 0))
 	result.painful_reveal = {
 		"winner_peer_id": winner_peer_id,
 		"winner_score": winner_score,

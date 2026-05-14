@@ -20,14 +20,17 @@ func _make_context(player_count: int, wagers: Dictionary, modifiers: Dictionary)
 	ctx.event_modifiers = modifiers
 	return ctx
 
-# Perfect 21 -> +3 Heat.
+# Perfect 21 -> +3 Heat from HeatRules, plus +1 bonus Heat per
+# Alpha remediation Phase D D.2 (§9.3): "shooter gets +1 bonus Heat"
+# on perfect-21 attack -> +4 total when the perfect 21 fires.
 func test_card_cannon_heat_perfect_21():
 	var ctx = _make_context(2, {1: 100, 2: 100}, {})
 	var hands = {1: [11, 10], 2: [10, 5]}
 	var locked = {1: 21, 2: 15}
 	var busted = {1: false, 2: false}
 	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
-	assert_eq(int(result.per_player[1].heat_delta), 3, "perfect 21 = +3 Heat")
+	assert_eq(int(result.per_player[1].heat_delta), 4,
+		"perfect 21 = +3 base Heat + 1 perfect-attack bonus Heat")
 
 # 19+ -> +2 Heat.
 func test_card_cannon_heat_high_lock_19():
@@ -57,11 +60,15 @@ func test_card_cannon_heat_busted_zero():
 	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
 	assert_eq(int(result.per_player[1].heat_delta), 0, "busted player gets 0 Heat")
 
-# Heat Shield halves perfect 21 (3 -> 1, since floor(3*0.5)=1).
+# Heat Shield halves perfect-21 base Heat (3 -> 1, since
+# floor(3*0.5)=1). The +1 bonus Heat from the perfect-21 attack per
+# Alpha remediation Phase D D.2 (§9.3) stacks on top of the shielded
+# base -> 1 + 1 = 2.
 func test_card_cannon_heat_shield_halves_perfect():
 	var ctx = _make_context(2, {1: 100, 2: 100}, {1: {"heat_shield": true}})
 	var hands = {1: [11, 10], 2: [10, 5]}
 	var locked = {1: 21, 2: 15}
 	var busted = {1: false, 2: false}
 	var result = CardCannonEvent.compute_event_result(ctx, hands, locked, busted)
-	assert_eq(int(result.per_player[1].heat_delta), 1, "Heat Shield halves 3 -> 1")
+	assert_eq(int(result.per_player[1].heat_delta), 2,
+		"Heat Shield halves base 3 -> 1; +1 perfect-attack bonus = 2")
