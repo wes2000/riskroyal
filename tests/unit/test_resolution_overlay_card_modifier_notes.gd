@@ -56,3 +56,49 @@ func test_multiplier_booster_handles_non_integer_pct():
 		"multiplier": 1.5,
 	})
 	assert_eq(note, "Sam's multiplier boosted (+50%)")
+
+func test_insurance_suppressed_when_no_refund():
+	# Insurance refund_amount lands on effect_result only when the player
+	# busted. No-bust path keeps the note suppressed so the overlay doesn't
+	# render "Insurance saved Maya 0 chips".
+	assert_true(ResolutionOverlay.should_suppress_modifier_note("insurance", {
+		"target_name": "Maya",
+		"refund_amount": 0,
+	}))
+
+func test_insurance_not_suppressed_when_refund_present():
+	assert_false(ResolutionOverlay.should_suppress_modifier_note("insurance", {
+		"target_name": "Maya",
+		"refund_amount": 30,
+	}))
+
+func test_wager_tax_suppressed_when_no_tax():
+	# Wager Tax tax_amount lands only when the target had positive winnings.
+	# Target-busted or 0-delta path keeps the note suppressed.
+	assert_true(ResolutionOverlay.should_suppress_modifier_note("wager_tax", {
+		"source_name": "Jordan",
+		"target_name": "Maya",
+		"tax_amount": 0,
+	}))
+
+func test_wager_tax_not_suppressed_when_tax_present():
+	assert_false(ResolutionOverlay.should_suppress_modifier_note("wager_tax", {
+		"source_name": "Jordan",
+		"target_name": "Maya",
+		"tax_amount": 40,
+	}))
+
+func test_multiplier_booster_not_suppressed_with_any_payload():
+	# Multiplier Booster effect is known at card-play time; never suppress.
+	assert_false(ResolutionOverlay.should_suppress_modifier_note("multiplier_booster", {
+		"target_name": "Maya",
+		"multiplier": 1.25,
+	}))
+
+func test_cash_out_jammer_not_suppressed_with_any_payload():
+	# Cash-Out Jammer delay_ms is known at card-play time; never suppress.
+	assert_false(ResolutionOverlay.should_suppress_modifier_note("cash_out_jammer", {
+		"source_name": "Jordan",
+		"target_name": "Maya",
+		"delay_ms": 750,
+	}))

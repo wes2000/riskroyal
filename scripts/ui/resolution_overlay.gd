@@ -38,6 +38,8 @@ func _on_card_effect_applied(peer_id: int, card_id: String, effect_result: Dicti
 	if not _is_modifier_note_card(card_id):
 		return
 	var note_payload = _build_modifier_note_payload(peer_id, card_id, effect_result)
+	if should_suppress_modifier_note(card_id, note_payload):
+		return
 	var note = format_modifier_note(card_id, note_payload)
 	if note != "":
 		_pending_modifier_notes.append(note)
@@ -163,6 +165,17 @@ func _append_line(text: String) -> void:
 	_lines.add_child(label)
 
 # Static formatter (testable)
+
+# Insurance/Wager Tax compute their actual amount at resolution time, not at
+# card-play time. When the effect didn't observably fire (player didn't bust
+# → no refund; target had no positive delta → no tax), suppress the note
+# rather than show "saved 0 chips". The card is silently inert.
+static func should_suppress_modifier_note(card_id: String, payload: Dictionary) -> bool:
+	if card_id == "insurance":
+		return int(payload.get("refund_amount", 0)) == 0
+	if card_id == "wager_tax":
+		return int(payload.get("tax_amount", 0)) == 0
+	return false
 
 # Alpha remediation Phase F §11.3: composes the visual tag for one of the
 # four modifier cards. Returns "" for any other card_id so the overlay
