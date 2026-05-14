@@ -17,7 +17,8 @@ func _build_match_start(player_count: int) -> RefCounted:
 
 class StubEvent extends Node:
 	var delays: Dictionary = {}
-	func set_cash_out_delay(peer_id: int, delay_ms: int) -> void:
+	# Phase C Change 4: signature gains source_peer_id for attribution.
+	func set_cash_out_delay(peer_id: int, delay_ms: int, _source_peer_id: int = 0) -> void:
 		delays[peer_id] = delay_ms
 
 func test_pending_jammer_delays_injected_into_event():

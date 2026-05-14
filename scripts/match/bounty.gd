@@ -50,6 +50,8 @@ static func from_dict(d: Dictionary) -> RefCounted:
 
 # Returns true if the claimant satisfies the bounty against the given
 # event result. Claimant must not be the target and must not have busted.
+# Phase C Change 4 (§8.4): adds "bust_after_sabotage" condition which
+# additionally requires the target's sabotaged_by list to be non-empty.
 static func satisfies(bounty, result, claimant_peer_id: int) -> bool:
 	if claimant_peer_id == bounty.target:
 		return false
@@ -58,6 +60,12 @@ static func satisfies(bounty, result, claimant_peer_id: int) -> bool:
 	match bounty.condition:
 		"bust":
 			return result.bust_for(bounty.target)
+		"bust_after_sabotage":
+			if not result.bust_for(bounty.target):
+				return false
+			var target_entry = result.per_player.get(bounty.target, {})
+			var sabotaged = target_entry.get("sabotaged_by", [])
+			return sabotaged is Array and sabotaged.size() > 0
 		_:
 			return false
 

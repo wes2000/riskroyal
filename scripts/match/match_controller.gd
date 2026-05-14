@@ -701,9 +701,11 @@ func _inject_pending_event_effects() -> void:
 	var kept: Array = []
 	for effect in state.pending_card_effects:
 		if effect.get("type", "") == "cash_out_delay":
+			# Phase C Change 4 (§8.4): forward source for attribution.
 			_current_event_node.set_cash_out_delay(
 				int(effect.get("target", 0)),
 				int(effect.get("delay_ms", 750)),
+				int(effect.get("source", 0)),
 			)
 		else:
 			kept.append(effect)

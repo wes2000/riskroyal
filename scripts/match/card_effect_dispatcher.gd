@@ -67,8 +67,10 @@ static func apply(state, peer_id: int, effect: Dictionary, is_host: bool) -> voi
 			var new_wager = int(effect.get("new_wager", 0))
 			state.pending_wagers[caller] = new_wager
 		"cash_out_delay":
+			# Phase C Change 4 (§8.4): preserve source for attribution.
 			state.pending_card_effects.append({
 				"type": "cash_out_delay",
+				"source": int(effect.get("source", 0)),
 				"target": int(effect.get("target", 0)),
 				"delay_ms": int(effect.get("delay_ms", 750)),
 			})
