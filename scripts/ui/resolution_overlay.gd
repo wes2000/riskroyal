@@ -126,6 +126,9 @@ static func format_resolution_step(step_name: String, payload: Dictionary) -> St
 			# the cash_outs_summary contract from spec section 11).
 			if payload.has("crash_at") and payload.has("cash_outs_summary"):
 				return _format_painful_reveal_rocket(payload)
+			# Alpha remediation Phase B Change 2: Bomb Pot event-specific reveal.
+			if payload.has("bomb_at_sec") and payload.has("pulls_summary"):
+				return format_painful_reveal_bomb_pot(payload)
 			# Existing TestEvent fallback (winner_peer_id + optional winner_name only)
 			var winner_name = payload.get("winner_name", "")
 			var winner_pid = payload.get("winner_peer_id", 0)
@@ -151,6 +154,52 @@ static func _format_crown_award_entry(peer_id: int, delta: int) -> String:
 	if delta >= 2:
 		return "P%d gets 👑👑 %d CROWNS (Sudden Death stack!)" % [peer_id, delta]
 	return "P%d gets %d Crown" % [peer_id, delta]
+
+# Alpha remediation Phase B Change 2: event-specific painful reveal for
+# Bomb Pot. Spec §6.3 of the remediation design doc.
+static func format_painful_reveal_bomb_pot(payload: Dictionary) -> String:
+	var bomb_at_sec = float(payload.get("bomb_at_sec", 0.0))
+	var winner_pid = int(payload.get("winner_peer_id", 0))
+	var winner_pull_ms = int(payload.get("winner_pull_out_ms", 0))
+	var pulls: Array = payload.get("pulls_summary", [])
+
+	var lines: Array = []
+	lines.append("BOMB! Pot popped at %.1fs" % bomb_at_sec)
+
+	# Find the winner row + format with "last safe pull" emphasis
+	var winner_row: Dictionary = {}
+	for row in pulls:
+		if int(row.get("peer_id", 0)) == winner_pid:
+			winner_row = row
+			break
+	if not winner_row.is_empty():
+		var name = String(winner_row.get("name", "P?"))
+		var pull_sec = float(winner_pull_ms) / 1000.0
+		var delta = int(winner_row.get("chip_delta", 0))
+		lines.append("  %s pulled at %.1fs +%d chips, last safe pull" % [name, pull_sec, delta])
+
+	# Other survivors (pullers who weren't the winner)
+	for row in pulls:
+		var pid = int(row.get("peer_id", 0))
+		if pid == winner_pid:
+			continue
+		if bool(row.get("busted", false)):
+			continue
+		var name = String(row.get("name", "P?"))
+		var pull_sec = float(int(row.get("pull_out_ms", 0))) / 1000.0
+		var delta = int(row.get("chip_delta", 0))
+		var sign = "+" if delta >= 0 else ""
+		lines.append("  %s pulled at %.1fs %s%d chips" % [name, pull_sec, sign, delta])
+
+	# Busted players
+	for row in pulls:
+		if not bool(row.get("busted", false)):
+			continue
+		var name = String(row.get("name", "P?"))
+		var delta = int(row.get("chip_delta", 0))
+		lines.append("  %s busted, still grabbing when it blew (%d chips)" % [name, delta])
+
+	return "\n".join(lines)
 
 static func _format_painful_reveal_rocket(payload: Dictionary) -> String:
 	var lines: Array = []
