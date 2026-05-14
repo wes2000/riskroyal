@@ -11,3 +11,6 @@
 # Test runner output
 test_output.txt
 integration_output.txt
+
+# Export output
+exports/

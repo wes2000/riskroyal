@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: '4.6'
+  GODOT_STATUS: stable
+  EXPORT_NAME: riskroyal
+
+jobs:
+  windows-export:
+    name: Windows Desktop Export
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Derive version from tag
+        id: ver
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Tag: ${GITHUB_REF_NAME}  Version: ${VERSION}"
+
+      - name: Verify VERSION file matches tag
+        run: |
+          FILE_VERSION=$(tr -d '[:space:]' < VERSION)
+          TAG_VERSION="${{ steps.ver.outputs.version }}"
+          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::VERSION file ($FILE_VERSION) does not match tag ($TAG_VERSION). Update VERSION (and project.godot config/version) before tagging."
+            exit 1
+          fi
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends unzip curl zip ca-certificates
+
+      - name: Download Godot ${{ env.GODOT_VERSION }}-${{ env.GODOT_STATUS }}
+        run: |
+          GODOT_TAG="${GODOT_VERSION}-${GODOT_STATUS}"
+          GODOT_NAME="Godot_v${GODOT_TAG}_linux.x86_64"
+          curl -L -o godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_TAG}/${GODOT_NAME}.zip"
+          unzip -q godot.zip
+          mv "${GODOT_NAME}" /usr/local/bin/godot
+          chmod +x /usr/local/bin/godot
+          godot --version
+
+      - name: Install Godot export templates
+        run: |
+          GODOT_TAG="${GODOT_VERSION}-${GODOT_STATUS}"
+          curl -L -o templates.tpz "https://github.com/godotengine/godot-builds/releases/download/${GODOT_TAG}/Godot_v${GODOT_TAG}_export_templates.tpz"
+          TEMPLATES_DIR="${HOME}/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_STATUS}"
+          mkdir -p "${TEMPLATES_DIR}"
+          unzip -q templates.tpz
+          mv templates/* "${TEMPLATES_DIR}/"
+          ls "${TEMPLATES_DIR}/"
+
+      - name: Import project (populate .godot cache)
+        run: |
+          mkdir -p .godot
+          # First import often returns non-zero; second pass converges.
+          godot --headless --import || true
+          godot --headless --import
+
+      - name: Run unit tests
+        run: |
+          godot --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests/unit -gexit > test_out.txt 2>&1 || true
+          tail -25 test_out.txt
+          # GUT prints "  Passing  <N>" and "  Failing  <N>"; fail the job if any failing.
+          if grep -Eq "Failing +[1-9]" test_out.txt; then
+            echo "::error::Unit tests failed"
+            exit 1
+          fi
+          grep -E "^Tests +[0-9]+|Passing +[0-9]+" test_out.txt || true
+
+      - name: Export Windows build
+        run: |
+          mkdir -p exports
+          godot --headless --export-release "Windows Desktop" exports/${EXPORT_NAME}.exe
+          ls -la exports/
+          # Sanity: exe should exist and be non-trivial size
+          test -s "exports/${EXPORT_NAME}.exe"
+
+      - name: Package zip
+        id: pkg
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          ZIP_NAME="${EXPORT_NAME}-v${VERSION}-windows.zip"
+          cd exports
+          zip -r "../${ZIP_NAME}" .
+          cd ..
+          ls -la "${ZIP_NAME}"
+          echo "zip_path=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Risk Royal ${{ github.ref_name }}
+          generate_release_notes: true
+          files: ${{ steps.pkg.outputs.zip_path }}

@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="Risk Royal"
+config/version="0.1.0"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
@@ -20,6 +21,7 @@ config/icon="res://icon.svg"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 NetSessionMain="*res://scripts/net/net_session_main.gd"
 SoundManager="*res://scripts/audio/sound_manager.gd"
+Updater="*res://autoload/updater.gd"
 
 [editor_plugins]
 
