@@ -5,6 +5,7 @@
 extends PanelContainer
 
 const HouseTwistOverlay = preload("res://scripts/ui/house_twist_overlay.gd")
+const CardRegistry = preload("res://scripts/cards/card_registry.gd")
 
 const DISPLAY_DURATION_SEC: float = 3.0
 
@@ -25,6 +26,11 @@ func _ready() -> void:
 		if controller.has_signal("crown_awarded"):
 			controller.crown_awarded.connect(_on_crown_awarded)
 		controller.match_ended.connect(_on_match_ended)
+		# Alpha remediation Phase F §11.3: public callouts when a card is
+		# played. Subscribe via has_signal so headless / minimal test
+		# harnesses don't trip on missing signal.
+		if controller.has_signal("card_effect_applied"):
+			controller.card_effect_applied.connect(_on_card_effect_applied)
 
 func _on_house_twist_announced(twist_dict: Dictionary) -> void:
 	# Alpha remediation Phase F §12.3: resolve the target's display name
@@ -45,6 +51,24 @@ func _on_player_busted(peer_id: int, chip_loss: int) -> void:
 func _on_crown_awarded(peer_id: int, count: int) -> void:
 	var peer_name = _name_for(peer_id)
 	_enqueue(format_crown_text(peer_name, count))
+
+func _on_card_effect_applied(peer_id: int, card_id: String, effect_result: Dictionary) -> void:
+	# Alpha remediation Phase F §11.3: public banner per card play.
+	# Resolves the actor's display name via _name_for + the target's via
+	# the effect_result.target field (only present for target-required
+	# cards; the static formatter ignores it for self-target / no-target
+	# cards). Display name comes from CardRegistry so the generic
+	# fallback "<Player> played <CardName>." picks up future cards
+	# automatically.
+	var peer_name = _name_for(peer_id)
+	var target_pid = int(effect_result.get("target", 0))
+	var target_name = "" if target_pid == 0 else _name_for(target_pid)
+	var card = CardRegistry.get_card(card_id)
+	var card_display_name = String(card.get("name", card_id))
+	var msg = format_card_callout(card_id, peer_name, target_name, card_display_name)
+	if msg == "":
+		return
+	_enqueue(msg)
 
 func _on_match_ended(rankings: Array) -> void:
 	# Sub-project #7 Plan B C3 fixup: rankings[0] is a MatchPlayer Object
@@ -151,6 +175,25 @@ static func format_crown_text(peer_name: String, crown_count: int) -> String:
 
 static func format_match_outcome_text(_winner_peer_id: int, winner_name: String) -> String:
 	return "%s WINS THE MATCH!" % winner_name
+
+# Alpha remediation Phase F §11.3: public banner copy for card plays.
+# The four "flavor" cards have spec-pinned literal strings; every other
+# card uses the generic "<Player> played <CardName>." form. card_display_name
+# falls back to card_id at the call site if CardRegistry has no entry.
+static func format_card_callout(card_id: String, peer_name: String,
+		target_name: String, card_display_name: String) -> String:
+	match card_id:
+		"cash_out_jammer":
+			return "%s jammed %s's cash-out." % [peer_name, target_name]
+		"insurance":
+			return "%s bought Insurance. Cowardly? Effective." % peer_name
+		"copycat_bet":
+			return "%s copied %s's wager." % [peer_name, target_name]
+		"heat_spike":
+			return "%s spiked %s's Heat." % [peer_name, target_name]
+		_:
+			var name = card_display_name if card_display_name != "" else card_id
+			return "%s played %s." % [peer_name, name]
 
 # Plan C Task 4: animation timeline durations exposed as a Dictionary
 # so unit tests can assert the stage lengths without running a real Tween.

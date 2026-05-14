@@ -33,5 +33,11 @@ static func apply(context, target_peer_id: int, params = null) -> Dictionary:
 		"type": "copycat_bet",
 		"applied": true,
 		"source": caller_peer_id,
+		# Alpha remediation Phase F §11.3: announcer reads `target` to format
+		# "Alex copied Sam's wager." The dispatcher already had the target
+		# implicit in the apply() signature; surface it on the effect_result
+		# so downstream consumers (announcer, future overlays) don't have
+		# to re-derive it from state.
+		"target": target_peer_id,
 		"new_wager": new_wager,
 	}
