@@ -45,6 +45,10 @@ The followups memory `project_riskroyal_followups.md` accumulates ~15 carry-forw
 | Starter pack broadcast | Narrow to per-peer `rpc_id()` | Real bandwidth win for Power Surge + initial deal |
 | Announcer scope | Text overlays only, no TTS | TTS is a v1.1 / post-MVP polish item |
 | LoadoutOverlay UX | Drag-to-loadout via Godot 4's `_get_drag_data` / `_can_drop_data` / `_drop_data` API | More natural than click-toggle; Godot 4 drag API is a clean fit; avoids ambiguous "which slot?" problem |
+| Audio approach (Plan C) | Procedural synthesis via `AudioStreamGenerator` + asset-slot scan for user-provided overrides | Ships an audible framework without external dependencies; users can replace with custom assets by dropping files into `scripts/audio/sfx/` |
+| Animation depth (Plan C) | Sequenced Tweens (multi-step transitions) | More polished than Plan B's single-line fades; avoids `AnimationPlayer` scene-file complexity |
+| Spectator mode (Plan C) | Full layout rework with dedicated `SpectatorOverlay` scene | Leaderboard-style ranking + per-event status; supersedes the design doc §3 spectator mention |
+| Accessibility (Plan C) | Color-blind shape/icon cues + text-scale toggle only | High-contrast mode and keyboard-only nav audit deferred to post-MVP v1.1 |
 
 ## 5. Architecture changes (Plan A)
 
@@ -265,25 +269,97 @@ New PENDING integration test stub: `tests/integration/test_announcer_fires_acros
 - 33: Painful reveals appear on bust (RED) and crown (GOLD) moments only
 - 34: LoadoutOverlay drag-to-slot works end-to-end; Cash-Out Jammer target picker opens and submits
 
-## 6.5. Architecture changes (Plan C preview — final MVP plan)
+## 6.5. Architecture changes (Plan C — feel + audio + a11y)
 
-Plan C is the third and final plan for sub-project #7. After Plan C merges, the project receives tags `subproject-7-plan-c-complete` + `subproject-7-complete` + `mvp-complete`.
+Plan C is the third and final plan for sub-project #7. After Plan C merges, the project receives tags `subproject-7-plan-c-complete` + `subproject-7-complete` + `mvp-complete`. Plan B shipped 2026-05-13. Plan C scope: 5 phases, 17 tasks. Final test target: ~650 unit + 9 integration.
 
-Plan C will receive its own detailed brainstorm cycle after Plan B merges. Anticipated scope (~12-15 tasks):
+### Phase 1 — Audio framework (Tasks 1-3)
 
-**SFX cues.** New autoload `scripts/audio/sound_manager.gd` manages all in-game audio. Cues: chip-transfer sound, bust sound, crown-win sound, match-end sound, button-press tactile feedback, twist-announce stinger. Free CC-0 assets are acceptable for MVP. `SoundManager` listens to the same `player_busted` / `crown_awarded` / `house_twist_announced` / `match_outcome_decided` signals added in Plan B and plays the matching cue. No SFX are added in Plan B (all Tween-only for Plan B widgets).
+**Task 1 — `SoundManager` autoload (NEW).**
+Files: `scripts/audio/sound_manager.gd`, registered in `project.godot` as a global autoload named `SoundManager`. The class exposes 6 named play methods: `play_chip_transfer()`, `play_bust()`, `play_crown_win()`, `play_match_end()`, `play_button_press()`, and `play_twist_stinger()`. Each method drives an `AudioStreamGenerator` node to synthesize a short distinct waveform inline — no asset file required to ship an audible experience. Waveform personalities: saw-wave descending 200 Hz burst for bust; ascending C-E-G arpeggio for crown win; descending tone for match end; brief click for button press; rising sweep for twist stinger; soft tone for chip transfer. A static helper centralizes synthesis parameters:
 
-**Polished animations.** Replace the simple `Tween` blocks added in Plan B with sequenced animations: `Announcer` slide-in from top with ease-out, `PainfulReveal` expansion + hold + dissolve using `AnimationPlayer`, `crown_delta=2` stack pulse with a distinct GOLD burst frame, match-end winner reveal with a full-screen flash moment.
+```gdscript
+static func synth_params(name: String) -> Dictionary:
+    # Returns keys: frequency (float), duration (float), waveform_type (String)
+    # Used by unit tests to assert distinct cue personalities without playing audio.
+```
 
-**Spectator-mode polish.** When the local peer is busted or dropped during an active match, surface a clean `"Spectating P3 (Crown leader)"` overlay. Hide play-only widgets (`BetLoadoutOverlay`, target-picker prompts, hand row). Keep `StatusGrid` and `Announcer` visible so the spectating peer can follow the game. The spectator overlay reads the crown-leader from `MatchController.state` using the existing `PlayerSelectors.find_chips_extremum` helper as a proxy until a dedicated crown-leader tracker is available.
+`synth_params` is the primary unit-test entry point — tests assert that each named cue returns a distinct `frequency`/`waveform_type` combination without instantiating an audio bus. Test file: `tests/unit/test_sound_manager.gd` (+3 unit tests).
 
-**Color-blind accessibility.** Convert chip-loss RED / crown-win GOLD color cues in `PainfulReveal` and `StatusGrid` to also use shape/icon differentiation (e.g., a skull icon for bust, a crown icon for crown win) so color is not the sole signal. A settings toggle for a full color-blind mode is a v1.1 item unless implementation proves trivial during Plan C.
+**Task 2 — Asset-slot loading (MODIFY `SoundManager`).**
+`SoundManager._ready` scans `scripts/audio/sfx/*.ogg` at startup. For each filename matching a known slot (`bust.ogg`, `crown_win.ogg`, `match_end.ogg`, `button_press.ogg`, `twist_stinger.ogg`, `chip_transfer.ogg`), the corresponding play method switches from procedural `AudioStreamGenerator` synthesis to a file-backed `AudioStreamPlayer` loaded from the matched path. Slots with no matching file fall back to the procedural synthesizer. This lets a user drop higher-quality replacements into `scripts/audio/sfx/` with zero code changes. A `README` in `scripts/audio/sfx/` documents the 6 expected filenames and their slot semantics. Test file: `tests/unit/test_sound_manager.gd` (+2 unit tests covering slot detection logic via a mock filesystem scan helper).
 
-**Text scaling.** Settings toggle for 1.0× / 1.25× / 1.5× UI text scale, applied via Godot theme overrides. Allows playtesters on lower-resolution monitors to read the game without squinting.
+**Task 3 — Signal-to-SFX dispatcher (NEW or folded into `SoundManager`).**
+`scripts/audio/sound_dispatcher.gd` (or an inner method in `SoundManager._ready`) wires the Plan B signals to their corresponding cues: `MatchController.player_busted` → `play_bust()`; `MatchController.crown_awarded` → `play_crown_win()`; `MatchController.house_twist_announced` → `play_twist_stinger()`; `MatchController.match_outcome_decided` → `play_match_end()`. UI buttons fire `SoundManager.play_button_press()` either by calling it directly in their `pressed` handler or via a thin `ButtonWithSFX` subclass that wraps the base `Button` and connects `pressed` to `SoundManager.play_button_press()` automatically. Dispatcher integration is tested by asserting that signal emissions trigger the correct `synth_params` key lookup (mock SoundManager, no audio hardware). Test file: `tests/unit/test_sound_dispatcher.gd` (+2 unit tests).
 
-**Post-Plan-B fixups.** Plan C may fold in any review feedback or minor bugs surfaced during Plan B playtesting.
+### Phase 2 — Sequenced animations (Tasks 4-7)
 
-Full task breakdown, file paths, and test targets will be specified in the Plan C design amendment after Plan B merges.
+**Task 4 — Announcer slide animation overhaul (MODIFY `scripts/ui/announcer.gd`).**
+Replaces the Plan B single-`Tween` alpha fade with a three-stage sequenced transition. Stage 1: position slides from `y = -100` to `y = 0` over 0.3 s using `EASE_OUT_BACK` for a subtle bounce on entry. Stage 2: hold at full opacity for 2.5 s. Stage 3: position slides back to `y = -100` over 0.3 s while alpha transitions from 1.0 to 0.0 in parallel via a second `Tween` property track. All three stages are chained in a single `Tween` using `append`/`parallel` calls so the sequence is cancellable (new message arriving during stage 2 resets the queue per Plan B's FIFO contract). Test assertion: the Tween chain has correct duration constants (1 unit test, +1).
+
+**Task 5 — `PainfulReveal` bust animation (MODIFY `scripts/ui/painful_reveal.gd`).**
+Replaces the Plan B 2-second slide-in with a 5-step micro-animation. Step 1: scale from `0` to `1.2` over 0.15 s with `EASE_OUT` (snap-in). Step 2: scale from `1.2` to `1.0` over 0.1 s with `EASE_IN_OUT` (settle). Step 3: brief position-offset oscillation to simulate a shake (3 cycles, ±4 px, 0.12 s total). Step 4: hold RED modulate for 1.2 s. Step 5: alpha fade to `0.0` over 0.3 s. The 5-step sequence uses a single chained Tween. Test assertion: stage durations sum to expected total (1 unit test, +1).
+
+**Task 6 — `PainfulReveal` crown animation (MODIFY `scripts/ui/painful_reveal.gd`).**
+Replaces the Plan B 1.5-second pulse with a sequenced sparkle + pulse. Step 1: scale `0` → `1.0` and rotate `-15°` → `+15°` simultaneously over 0.2 s (sparkle burst). Step 2: double-pulse scale sequence `1.0 → 1.15 → 1.0 → 1.15 → 1.0` over 0.6 s total (each leg ~0.15 s). Step 3: alpha fade `1.0` → `0.0` over 0.3 s. All steps are chained Tween tracks. Test assertion: crown animation total duration is approximately 1.1 s (1 unit test, +1).
+
+**Task 7 — `crown_delta=2` stack animation (MODIFY `scripts/ui/resolution_overlay.gd`).**
+Extends the Plan B `crown_delta >= 2` rendering with a sequenced entry. The first crown icon renders via the existing path. After a 0.3 s delay, a second crown icon slides in from below: alpha `0 → 1` and position `y + 20 → y` over 0.4 s. Once the second crown is settled, the suffix text `"(Sudden Death stack!)"` fades in over 0.3 s on a separate `Label` node. The full sequence is a single Tween subgraph attached to the `crown_delta=2` branch in the results row renderer. Test assertion: the delay + slide + text-fade sequence fires only when `crown_delta >= 2` (1 unit test, +1).
+
+### Phase 3 — Spectator full layout rework (Tasks 8-13)
+
+**Task 8 — `SpectatorOverlay` scene + script (NEW).**
+Files: `scripts/ui/spectator_overlay.gd` + `scenes/ui/spectator_overlay.tscn`. Full-screen `Control` anchored to fill the right 40% of the viewport. Internal layout: `VBoxContainer` with a fixed title label `"SPECTATING"`, a leaderboard section (sorted ranking rows), a per-event status panel (populated by Task 12), and a match-progress label. The script exposes a static formatter:
+
+```gdscript
+static func format_leaderboard(players: Array) -> Array[Dictionary]:
+    # Returns players sorted by crowns desc, then chips desc.
+    # Each element: { peer_id, display_name, crowns, chips, rank }
+```
+
+The formatter is pure-function and unit-testable without instantiating the scene. Test file: `tests/unit/test_spectator_overlay.gd` (+3 unit tests: sort by crowns, tiebreak by chips, single-player edge case).
+
+**Task 9 — `local_player_spectator_mode_entered` signal (MODIFY `scripts/match/match_controller.gd`).**
+A new signal `local_player_spectator_mode_entered(reason: String)` is added to `MatchController`. It fires under two conditions: (a) the local peer's `is_active_this_event` flag is `false` while the match phase is `MAIN_EVENT`; (b) the local peer's connection drops mid-match. The `reason` string carries `"busted"` or `"dropped"` to allow the UI to display context-appropriate messaging. The signal is emitted on the host and mirrors to all peers via the existing match-state RPC pathway — spectating clients need to receive it too. Two tests cover emission conditions: bust path and drop path. Test file: `tests/unit/test_match_controller_spectator_signal.gd` (+2 unit tests).
+
+**Task 10 — Match scene visibility gating (MODIFY `scripts/ui/match_scene.gd` + `scenes/match_scene.tscn`).**
+When `local_player_spectator_mode_entered` fires, `match_scene.gd` hides: `BetLoadoutOverlay`, `LoadoutOverlay`, `EventPickerOverlay`, `CashOutCardDrawer`, and `CashOutCardDrawerTargetPicker`. Simultaneously, `SpectatorOverlay` becomes visible. On `event_starting` signal, `match_scene.gd` checks if the local peer is now active; if not, the overlay stays visible (once busted, local stays in spectator mode for the rest of the match — mid-match re-entry is not supported in MVP). The visibility toggle is a direct `show()`/`hide()` on named scene nodes; no re-parenting needed for this gating step. No new unit tests (visibility gating is integration-only).
+
+**Task 11 — Compact widget re-layout for spectator view (MODIFY `scenes/match_scene.tscn`).**
+When `SpectatorOverlay` is visible, `StatusGrid`, `Announcer`, and `PainfulReveal` shift to a compact right-column layout so they don't occlude the spectator leaderboard. The preferred approach is a dedicated `SpectatorSlot` anchor container declared in `match_scene.tscn`; on the `local_player_spectator_mode_entered` signal, `match_scene.gd` re-parents those three nodes into `SpectatorSlot` at runtime. A secondary option (two pre-placed node slots, toggle visibility) is acceptable if re-parenting proves fragile during implementation. No new unit tests (layout swap is integration-only).
+
+**Task 12 — Per-event spectator status text (MODIFY `scripts/ui/spectator_overlay.gd`).**
+`SpectatorOverlay` exposes a method `format_event_status(event_id: String, ctx_data: Dictionary) -> String` that returns event-specific live status for the watched player. Branch behavior: Rocket Clash → `"P3 riding @ 4.2x"`; Bomb Pot → `"P3 in, 5s to bomb"`; Card Cannon → `"P3 score: 17/21"`. The `ctx_data` dictionary shape is event-specific (Rocket Clash passes `{ peer_id, multiplier }`; Bomb Pot passes `{ peer_id, seconds_to_bomb }`; Card Cannon passes `{ peer_id, score, target }`). Three formatter branches + their `ctx_data` shapes are documented inline. Test file: `tests/unit/test_spectator_overlay.gd` (+3 unit tests, one per event branch).
+
+**Task 13 — Spectator overlay layout polish (MODIFY `scripts/ui/spectator_overlay.gd` + `scenes/ui/spectator_overlay.tscn`).**
+Theme overrides on the `SpectatorOverlay` root `Control` increase font sizes relative to the main UI theme (leaderboard rows use a larger `theme_override_font_sizes/font_size`). Countdown widgets (bet timer, event picker timer) are never shown inside `SpectatorOverlay` — those are play-context-only nodes. The leaderboard rows are prominent and center-aligned. No new unit tests (visual-only change).
+
+### Phase 4 — Accessibility (Tasks 14-16)
+
+**Task 14 — Color-blind shape/icon cues (MODIFY `scripts/ui/announcer.gd`, `scripts/ui/painful_reveal.gd`).**
+Bust-related display strings are prefixed with `✗` (red X character); crown messages are prefixed with `👑`; chip-loss messages append a `↓` arrow suffix. These are embedded directly in the strings returned by the static formatters (`format_bust_text`, `format_crown_text`, etc.) so color stops being the sole differentiator. Existing formatter tests in `test_announcer.gd` and `test_painful_reveal.gd` are updated to assert the icon prefix/suffix is present. Test delta: updated assertions in existing files (+2 net new assertions counted as new tests).
+
+**Task 15 — Settings scene + text-scale toggle (NEW).**
+Files: `scripts/ui/settings_overlay.gd` + `scenes/ui/settings_overlay.tscn`. The scene contains three `Button` nodes labeled `"1.0×"`, `"1.25×"`, and `"1.5×"`. Activating a button applies the selected scale factor to the root `Control` node via `theme_override_font_sizes` or `theme_type_variation`. The chosen scale is persisted via `ConfigFile` at `user://settings.cfg` under key `[display] / text_scale`. On game start, `settings_overlay.gd._ready` reads `user://settings.cfg` and re-applies the saved scale. Test file: `tests/unit/test_settings_overlay.gd` (+3 unit tests: default scale applied on fresh start, scale persisted to cfg, scale loaded and re-applied on re-init).
+
+**Task 16 — Settings menu wiring (MODIFY `scripts/ui/match_scene.gd`, main menu scene).**
+A settings gear icon or labeled `Button` is added to the match scene HUD and the main menu. Pressing it opens `SettingsOverlay` as a modal (using `popup()` on a `Window` node or a full-screen `Control` with `mouse_filter = STOP`). The overlay is dismissed via a `Close` button or by pressing Escape. The persistence from Task 15 means settings survive scene reloads with no additional wiring. Test file: `tests/unit/test_settings_overlay.gd` (+1 unit test: wiring asserts the overlay's `visible` flips on button press).
+
+### Phase 5 — Integration + docs (Task 17)
+
+**Task 17 — Integration test stub + playtest checklist (NEW).**
+A PENDING integration test stub `tests/integration/test_sound_dispatcher.gd` documents the expected end-to-end behavior: 6 SFX cues fire on the correct `MatchController` signals in a 2-peer simulated match, and the dispatcher wiring survives a full event lifecycle. This follows the PENDING-stub convention established in sub-projects #3-6.
+
+`docs/PLAYTEST_CHECKLIST.md` gains scenarios 35-43:
+- 35: `play_bust()` SFX fires audibly on player bust
+- 36: `play_crown_win()` SFX fires on crown award
+- 37: `play_twist_stinger()` fires when house twist is announced
+- 38: `play_match_end()` fires on match outcome
+- 39: `play_button_press()` fires on UI button interactions
+- 40: Announcer slide-in/hold/slide-out 3-stage animation looks correct
+- 41: PainfulReveal bust micro-animation (snap, shake, hold, fade) looks correct
+- 42: SpectatorOverlay appears with leaderboard when local player is busted mid-match
+- 43: Text-scale toggle persists across scene reloads
 
 ## 7. Component-level change list
 
@@ -324,9 +400,22 @@ Full task breakdown, file paths, and test targets will be specified in the Plan 
 - `docs/PLAYTEST_CHECKLIST.md` (MODIFY — scenarios 28-34)
 
 ### Plan C
-- Scope TBD per future brainstorm after Plan B merges.
-- Expected: new `scripts/audio/sound_manager.gd` autoload + CC-0 audio assets + `scenes/ui/spectator_overlay.tscn` + `scripts/ui/spectator_overlay.gd` + settings UI nodes for a11y toggles (text scale, color-blind mode).
-- Full file list will be specified in the Plan C design amendment.
+- `scripts/audio/sound_manager.gd` (NEW) + autoload registration in `project.godot` (MODIFY)
+- `scripts/audio/sound_dispatcher.gd` (NEW — may be folded into `sound_manager.gd`)
+- `scripts/ui/spectator_overlay.gd` (NEW)
+- `scenes/ui/spectator_overlay.tscn` (NEW)
+- `scripts/ui/settings_overlay.gd` (NEW)
+- `scenes/ui/settings_overlay.tscn` (NEW)
+- `scripts/ui/announcer.gd` (MODIFY — Task 4 animation overhaul + Task 14 icon cues)
+- `scripts/ui/painful_reveal.gd` (MODIFY — Tasks 5-6 sequenced animations + Task 14 icons)
+- `scripts/ui/resolution_overlay.gd` (MODIFY — Task 7 `crown_delta=2` stack animation)
+- `scripts/ui/match_scene.gd` (MODIFY — Tasks 10-11 spectator visibility gating + slot placement + Task 16 settings button wiring)
+- `scenes/match_scene.tscn` (MODIFY — Task 11 `SpectatorSlot` anchor + Task 16 settings button node)
+- `scripts/match/match_controller.gd` (MODIFY — Task 9 `local_player_spectator_mode_entered` signal)
+- `project.godot` (MODIFY — `SoundManager` autoload registration)
+- New test files: `test_sound_manager.gd`, `test_sound_dispatcher.gd`, `test_spectator_overlay.gd`, `test_settings_overlay.gd`, `test_match_controller_spectator_signal.gd` + assertion updates in `test_announcer.gd` + `test_painful_reveal.gd` (~7 files touched)
+- `tests/integration/test_sound_dispatcher.gd` (NEW — PENDING stub)
+- `docs/PLAYTEST_CHECKLIST.md` (MODIFY — scenarios 35-43)
 
 ## 8. Test count math
 
@@ -336,9 +425,12 @@ Full task breakdown, file paths, and test targets will be specified in the Plan 
 | Plan A end (target) | ~576-580 | 7 pending (unchanged) | Original target |
 | Plan A end (actual) | 587 | 7 pending | ACTUAL — shipped 2026-05-13 |
 | Plan B end (target) | ~606 | 8 pending | +19 unit (8 new widget test files), +1 integration (announcer stub) |
-| Plan C end (target) | ~620 | 9 pending | Rough estimate — depends on Plan C brainstorm |
+| Plan B end (actual) | 623 | 8 pending | ACTUAL — shipped 2026-05-13 |
+| Plan C end (target) | ~650 | 9 pending | +27 unit (+3 SoundManager, +2 asset-slot, +2 dispatcher, +4 animations, +3 leaderboard formatter, +2 spectator signal, +3 per-event formatters, +2 icon cues, +3 text-scale, +1 settings wiring, +2 outstanding), +1 integration (sound dispatcher stub) |
 
-**Total #7 delta (all plans):** ~+56 unit, +2 integration.
+**Total #7 delta (all plans):** ~+86 unit, +2 integration.
+
+**Plan C unit test breakdown:** T1 +3 (synth params), T2 +2 (asset slot detection), T3 +2 (signal dispatcher), T4-T7 +1 each (4 animation duration/sequence assertions), T8 +3 (leaderboard formatter), T9 +2 (spectator signal emission), T10-T11 +0 (visibility gating, integration-only), T12 +3 (per-event formatters), T13 +0 (visual-only), T14 +2 (icon-cue formatter assertions), T15 +3 (text-scale persistence + theme apply), T16 +1 (wiring test), T17 +0 unit + 1 integration. Total Plan C delta: +27 unit, +1 integration.
 
 ## 9. Error handling
 
@@ -372,9 +464,15 @@ All items in `project_riskroyal_followups.md` "Open from sub-project #6 final re
 - LoadoutOverlay interactive grid — closes sub-project #4 Plan A carry-forward (Tasks 9+10)
 - (Announcer + PainfulReveal are new design additions, not inherited carry-forwards)
 
-**Plan C closes:** SFX cues, polished animations, spectator-mode polish, color-blind and text-scale accessibility — to be detailed in the Plan C brainstorm after Plan B merges.
+**Plan C closes:**
+- SFX cues — deferred to Plan C from the §6.5 preview; now delivered via `SoundManager` autoload + signal dispatcher (Tasks 1-3)
+- Polished sequenced animations — deferred from Plan B's single-Tween fades; now delivered via multi-step Tween chains for Announcer, PainfulReveal (bust + crown), and `crown_delta=2` stack (Tasks 4-7)
+- Spectator behavior — originally from design doc §3 "Polish pass"; deferred from Plan B; now delivered as a full layout rework with `SpectatorOverlay`, leaderboard ranking, per-event status, and visibility gating (Tasks 8-13)
+- Color-blind shape/icon cues — from §6.5 preview; delivered by embedding `✗`/`👑`/`↓` icons in static formatter output (Task 14)
+- Text-scale a11y — from §6.5 preview; delivered via `SettingsOverlay` + `ConfigFile` persistence (Tasks 15-16)
+- Any post-Plan-B fixup items: none flagged from Plan B's final review
 
-**Deferred to post-MVP:** integration test depth (the 7 PENDING stubs); spec drift reconciliation; minor test cleanup items (M1-M3 from Plan A fixup-3); color-blind settings toggle (unless trivial in Plan C).
+**Deferred to post-MVP (v1.1):** integration test depth (the 8 PENDING stubs); spec drift reconciliation; minor test cleanup items (M1-M3 from Plan A fixup-3); high-contrast color-blind mode (full palette swap); keyboard-only nav audit. Note: high-contrast mode and keyboard-only nav were explicitly evaluated for Plan C and deferred — they are v1.1 items, not accidentally omitted.
 
 ## 13. Memory updates after #7 merges
 
@@ -383,5 +481,7 @@ All items in `project_riskroyal_followups.md` "Open from sub-project #6 final re
 - `project_riskroyal_followups.md` — close the 6 UX carry-forwards that Plan B addresses (EventPickerOverlay countdown, crown_delta rendering, StatusGrid, BetLoadoutOverlay UX, target picker, LoadoutOverlay grid); flag remaining items as Plan C or post-MVP
 
 **After Plan C merges:**
-- `MEMORY.md` / `project_riskroyal.md` — mark sub-project #7 complete; MVP done; tag `mvp-complete`
-- `project_riskroyal_followups.md` — close all remaining Plan C carry-forwards (SFX, animations, spectator, a11y); flag any residuals as post-MVP / v1.1 items
+- `MEMORY.md` / `project_riskroyal.md` — mark sub-project #7 complete; MVP done; tag `mvp-complete`; note all 7 sub-projects shipped
+- `project_riskroyal_followups.md` — close ALL remaining carry-forwards: SFX cues, polished animations, spectator behavior, color-blind icon cues, text-scale a11y; mark the file as "closed / MVP complete"
+- Flag as post-MVP v1.1: high-contrast color-blind mode, keyboard-only nav audit, integration test depth (8 PENDING stubs), TURN server / NAT-traversal, multi-language i18n
+- No further sub-project memory updates needed after #7 — MVP milestone reached
