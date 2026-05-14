@@ -69,12 +69,22 @@ func _run_bust_animation() -> void:
 	_active_tween.tween_callback(func(): visible = false)
 
 func _run_crown_animation() -> void:
-	# Task 6 replaces this placeholder with the real sparkle + pulse.
-	var tw = create_tween()
-	tw.tween_property(self, "modulate:a", 1.0, 0.25)
-	tw.tween_interval(1.0)
-	tw.tween_property(self, "modulate:a", 0.0, 0.25)
-	tw.tween_callback(func(): visible = false)
+	var t = crown_animation_timeline()
+	scale = Vector2(0.0, 0.0)
+	rotation = deg_to_rad(-15.0)
+	_active_tween = create_tween()
+	_active_tween.set_parallel(true)
+	_active_tween.tween_property(self, "scale", Vector2(1.0, 1.0), float(t.sparkle_sec)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_active_tween.tween_property(self, "rotation", deg_to_rad(15.0), float(t.sparkle_sec)).set_trans(Tween.TRANS_SINE)
+	_active_tween.set_parallel(false)
+	_active_tween.tween_property(self, "rotation", 0.0, 0.05)
+	var leg = float(t.pulse_sec) / 4.0
+	_active_tween.tween_property(self, "scale", Vector2(1.15, 1.15), leg)
+	_active_tween.tween_property(self, "scale", Vector2(1.0, 1.0), leg)
+	_active_tween.tween_property(self, "scale", Vector2(1.15, 1.15), leg)
+	_active_tween.tween_property(self, "scale", Vector2(1.0, 1.0), leg)
+	_active_tween.tween_property(self, "modulate:a", 0.0, float(t.fade_sec))
+	_active_tween.tween_callback(func(): visible = false)
 
 # Static formatters (testable without scene)
 
@@ -83,6 +93,14 @@ static func format_bust_reveal(peer_name: String, chip_loss: int) -> String:
 
 static func format_crown_reveal(peer_name: String, count: int) -> String:
 	return "%s +%d CROWN" % [peer_name, count]
+
+static func crown_animation_timeline() -> Dictionary:
+	return {
+		"sparkle_sec": 0.2,
+		"pulse_sec": 0.6,
+		"fade_sec": 0.3,
+		"total_sec": 0.2 + 0.6 + 0.3,
+	}
 
 # Plan C Task 5: bust animation timeline.
 static func bust_animation_timeline() -> Dictionary:
