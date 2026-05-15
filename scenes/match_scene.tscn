@@ -58,6 +58,7 @@ text = "⚙"
 [node name="SettingsSlot" type="MarginContainer" parent="."]
 anchor_right = 1.0
 anchor_bottom = 1.0
+mouse_filter = 2
 
 [node name="PauseOverlay" type="PanelContainer" parent="."]
 anchor_right = 1.0
