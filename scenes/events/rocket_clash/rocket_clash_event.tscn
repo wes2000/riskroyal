@@ -2,10 +2,17 @@
 
 [ext_resource type="Script" path="res://scripts/events/rocket_clash/rocket_clash_event.gd" id="1"]
 
-[node name="RocketClashEvent" type="Node"]
+[node name="RocketClashEvent" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
 script = ExtResource("1")
 
 [node name="VBox" type="VBoxContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Title" type="Label" parent="VBox"]
+text = "Rocket Clash"
 
 [node name="MultiplierLabel" type="Label" parent="VBox"]
 text = "1.00x"
@@ -13,4 +20,6 @@ text = "1.00x"
 [node name="StatusGrid" type="HBoxContainer" parent="VBox"]
 
 [node name="CashOutButton" type="Button" parent="VBox"]
-text = "Cash Out"
+custom_minimum_size = Vector2(220, 60)
+text = "CASH OUT"
+modulate = Color(0.3, 1, 0.5, 1)

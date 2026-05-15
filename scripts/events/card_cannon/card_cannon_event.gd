@@ -28,8 +28,8 @@ var _force_next_rank_override: int = -1   # negative = use RNG
 # Scene-tree refs
 @onready var _score_label: Label = $VBox/ScoreLabel if has_node("VBox/ScoreLabel") else null
 @onready var _hand_row: HBoxContainer = $VBox/HandRow if has_node("VBox/HandRow") else null
-@onready var _draw_button: Button = $VBox/DrawButton if has_node("VBox/DrawButton") else null
-@onready var _lock_button: Button = $VBox/LockButton if has_node("VBox/LockButton") else null
+@onready var _draw_button: Button = $VBox/ButtonRow/DrawButton if has_node("VBox/ButtonRow/DrawButton") else null
+@onready var _lock_button: Button = $VBox/ButtonRow/LockButton if has_node("VBox/ButtonRow/LockButton") else null
 
 func get_event_id() -> String:
 	return "card_cannon"
@@ -52,11 +52,19 @@ func _on_lock_button_pressed() -> void:
 
 func submit_draw() -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	# Practice / offline mode: no MultiplayerPeer attached. Route directly
+	# through the host-side method (we ARE the host in practice mode).
+	if multiplayer == null or multiplayer.multiplayer_peer == null:
+		host_submit_draw(my_peer_id)
+		return
 	var host_peer_id = _stashed_context.host_peer_id if _stashed_context != null else 1
 	_send_rpc_to_host(host_peer_id, "_rpc_draw_requested", [my_peer_id])
 
 func submit_lock() -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	if multiplayer == null or multiplayer.multiplayer_peer == null:
+		host_submit_lock(my_peer_id)
+		return
 	var host_peer_id = _stashed_context.host_peer_id if _stashed_context != null else 1
 	_send_rpc_to_host(host_peer_id, "_rpc_lock_requested", [my_peer_id])
 

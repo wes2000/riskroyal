@@ -21,4 +21,6 @@ text = "Pot: 0 chips"
 text = "Waiting..."
 
 [node name="PullOutButton" type="Button" parent="VBox"]
-text = "Pull Out"
+custom_minimum_size = Vector2(220, 60)
+text = "PULL OUT"
+modulate = Color(1, 0.85, 0.2, 1)

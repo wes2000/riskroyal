@@ -234,24 +234,45 @@ func _send_rpc_to_host(method_name: String, args: Array = []) -> void:
 	_rpc_sender.send_to_host(host_peer_id, method_name, args)
 
 # Public: called locally by BetLoadoutOverlay's Ready handler.
+# Practice / offline mode detection: true when no MultiplayerPeer is
+# attached. In that case submit_* methods route directly through
+# host_submit_* (we ARE the host) instead of via rpc_id which would
+# silently fail.
+func _is_offline() -> bool:
+	if not is_inside_tree():
+		return true
+	return multiplayer == null or multiplayer.multiplayer_peer == null
+
 func submit_loadout_change(loadout: Array) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if is_inside_tree() else 1
+	if _is_offline() and is_host:
+		host_submit_loadout(my_peer_id, loadout)
+		return
 	_send_rpc_to_host("_rpc_loadout_set", [my_peer_id, loadout])
 
 func submit_card_play(card_id: String, target_peer_id: int = 0, params = null) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if is_inside_tree() else 1
+	if _is_offline() and is_host:
+		host_submit_card_play(my_peer_id, card_id, target_peer_id, params)
+		return
 	# Sub-project #7 Plan A Task 12: use rpc_id(host_peer_id) so only the
 	# host receives; previously broadcast to all peers.
 	_send_rpc_to_host("_rpc_card_play_requested", [my_peer_id, card_id, target_peer_id, params])
 
 func submit_wager(amount: int) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if is_inside_tree() else 1
+	if _is_offline() and is_host:
+		host_submit_wager(my_peer_id, amount)
+		return
 	_send_rpc_to_host("_rpc_set_wager", [my_peer_id, amount])
 
 # Public: called locally by EventPickerOverlay button presses on the
 # picker peer.
 func submit_event_pick(chosen_path: String) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if is_inside_tree() else 1
+	if _is_offline() and is_host:
+		host_submit_event_pick(my_peer_id, chosen_path)
+		return
 	_send_rpc_to_host("_rpc_event_picker_choice", [my_peer_id, chosen_path])
 
 # Bot-friendly entry points: take an explicit peer_id instead of inferring
@@ -725,10 +746,16 @@ func _rpc_house_twist_announced(twist_dict: Dictionary) -> void:
 
 func submit_shop_buy(card_id: String) -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	if _is_offline() and is_host:
+		host_submit_shop_buy(my_peer_id, card_id)
+		return
 	_send_rpc_to_host("_rpc_shop_buy_requested", [my_peer_id, card_id])
 
 func submit_shop_done() -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	if _is_offline() and is_host:
+		host_submit_shop_done(my_peer_id)
+		return
 	_send_rpc_to_host("_rpc_shop_done", [my_peer_id])
 
 func _process_main_event() -> void:

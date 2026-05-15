@@ -19,8 +19,14 @@ text = "Score: 0"
 
 [node name="HandRow" type="HBoxContainer" parent="VBox"]
 
-[node name="DrawButton" type="Button" parent="VBox"]
-text = "Draw"
+[node name="ButtonRow" type="HBoxContainer" parent="VBox"]
 
-[node name="LockButton" type="Button" parent="VBox"]
-text = "Lock"
+[node name="DrawButton" type="Button" parent="VBox/ButtonRow"]
+custom_minimum_size = Vector2(180, 60)
+text = "DRAW"
+modulate = Color(0.5, 0.7, 1, 1)
+
+[node name="LockButton" type="Button" parent="VBox/ButtonRow"]
+custom_minimum_size = Vector2(180, 60)
+text = "LOCK"
+modulate = Color(1, 0.85, 0.2, 1)

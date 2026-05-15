@@ -47,6 +47,12 @@ func _on_pull_out_button_pressed() -> void:
 
 func submit_pull_out() -> void:
 	var my_peer_id = multiplayer.get_unique_id() if multiplayer != null else 1
+	# Practice / offline mode: no MultiplayerPeer attached, so rpc_id() would
+	# fail silently. Route directly through the host-side method (we ARE the
+	# host in practice mode by design).
+	if multiplayer == null or multiplayer.multiplayer_peer == null:
+		host_submit_pull_out(my_peer_id)
+		return
 	var host_peer_id = _stashed_context.host_peer_id if _stashed_context != null else 1
 	_send_rpc_to_host(host_peer_id, "_rpc_pull_out_requested", [my_peer_id])
 

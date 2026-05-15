@@ -16,36 +16,36 @@ text = "Loading match..."
 
 [node name="PlayerPanels" type="HBoxContainer" parent="VBox"]
 
-[node name="BountyPanelSlot" type="Container" parent="VBox"]
+[node name="BountyPanelSlot" type="MarginContainer" parent="VBox"]
 
-[node name="HouseTwistSlot" type="Container" parent="VBox"]
+[node name="HouseTwistSlot" type="MarginContainer" parent="VBox"]
 
-[node name="EventPickerSlot" type="Container" parent="VBox"]
+[node name="EventPickerSlot" type="MarginContainer" parent="VBox"]
 
-[node name="BetLoadoutSlot" type="Container" parent="VBox"]
+[node name="BetLoadoutSlot" type="MarginContainer" parent="VBox"]
 
-[node name="LoadoutSlot" type="Container" parent="VBox"]
+[node name="LoadoutSlot" type="MarginContainer" parent="VBox"]
 
-[node name="EventSlot" type="Container" parent="VBox"]
+[node name="EventSlot" type="MarginContainer" parent="VBox"]
 custom_minimum_size = Vector2(0, 200)
 
-[node name="CashOutSlot" type="Container" parent="VBox"]
+[node name="CashOutSlot" type="MarginContainer" parent="VBox"]
 
-[node name="TargetPickerSlot" type="Container" parent="VBox"]
+[node name="TargetPickerSlot" type="MarginContainer" parent="VBox"]
 
-[node name="StatusGridSlot" type="Container" parent="VBox"]
+[node name="StatusGridSlot" type="MarginContainer" parent="VBox"]
 
-[node name="AnnouncerSlot" type="Container" parent="VBox"]
+[node name="AnnouncerSlot" type="MarginContainer" parent="VBox"]
 
-[node name="PainfulRevealSlot" type="Container" parent="VBox"]
+[node name="PainfulRevealSlot" type="MarginContainer" parent="VBox"]
 
 [node name="SpectatorSlot" type="Control" parent="VBox"]
 
-[node name="ShopSlot" type="Container" parent="VBox"]
+[node name="ShopSlot" type="MarginContainer" parent="VBox"]
 
-[node name="ResolutionSlot" type="Container" parent="VBox"]
+[node name="ResolutionSlot" type="MarginContainer" parent="VBox"]
 
-[node name="MatchEndSlot" type="Container" parent="VBox"]
+[node name="MatchEndSlot" type="MarginContainer" parent="VBox"]
 
 [node name="SettingsButton" type="Button" parent="."]
 anchor_left = 1.0
@@ -55,7 +55,7 @@ offset_right = 0.0
 offset_bottom = 30.0
 text = "⚙"
 
-[node name="SettingsSlot" type="Container" parent="."]
+[node name="SettingsSlot" type="MarginContainer" parent="."]
 anchor_right = 1.0
 anchor_bottom = 1.0
 
